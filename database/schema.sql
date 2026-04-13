@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   requested_by   TEXT NOT NULL REFERENCES users(id),
   started_at     TEXT,
   completed_at   TEXT,
+  log_output     TEXT,       -- log de treino acumulado (append)
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

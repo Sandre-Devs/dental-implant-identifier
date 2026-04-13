@@ -96,6 +96,57 @@ router.post('/:id/deploy', requireAuth, requireRole('admin'), (req, res) => {
 res.json({ message: 'Modelo deployado com sucesso.' });
 });
 
+// GET /api/models/:id/job — retorna job de treino + progress do modelo
+router.get('/:id/job', requireAuth, (req, res) => {
+  const job = db.prepare(`
+    SELECT j.* FROM jobs j
+    WHERE j.type = 'train_model'
+      AND json_extract(j.payload, '$.model_id') = ?
+    ORDER BY j.created_at DESC LIMIT 1
+  `).get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job não encontrado.' });
+  if (job.result)  try { job.result  = JSON.parse(job.result)  } catch {}
+  if (job.payload) try { job.payload = JSON.parse(job.payload) } catch {}
+  res.json(job);
+});
+
+// GET /api/models/:id/logs — retorna log_output do job de treino
+router.get('/:id/logs', requireAuth, (req, res) => {
+  const row = db.prepare(`
+    SELECT j.log_output, j.progress, j.status FROM jobs j
+    WHERE j.type = 'train_model'
+      AND json_extract(j.payload, '$.model_id') = ?
+    ORDER BY j.created_at DESC LIMIT 1
+  `).get(req.params.id);
+  if (!row) return res.status(404).json({ log: '', progress: 0, status: 'unknown' });
+  res.json({ log: row.log_output || '', progress: row.progress || 0, status: row.status });
+});
+
+// PATCH /api/jobs/:jobId/progress — atualiza progress + appenda log (chamado pelo serviço ML)
+router.patch('/jobs/:jobId/progress', requireAuth, requireRole('admin'), (req, res) => {
+  const { progress, log_line, status } = req.body;
+  const job = db.prepare('SELECT id FROM jobs WHERE id = ?').get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job não encontrado.' });
+
+  const fields = [];
+  const vals   = [];
+
+  if (progress != null) { fields.push('progress = ?'); vals.push(Math.min(100, Math.max(0, +progress))); }
+  if (status)           { fields.push('status = ?');   vals.push(status); }
+  if (log_line) {
+    // Append ao log existente (máx 500 linhas para não explodir o DB)
+    const current = db.prepare('SELECT log_output FROM jobs WHERE id = ?').get(req.params.jobId);
+    const lines   = (current.log_output || '').split('\n');
+    lines.push(`[${new Date().toISOString()}] ${log_line}`);
+    const trimmed = lines.slice(-500).join('\n');
+    fields.push('log_output = ?'); vals.push(trimmed);
+  }
+  if (!fields.length) return res.status(400).json({ error: 'Nada para atualizar.' });
+
+  db.prepare(`UPDATE jobs SET ${fields.join(', ')} WHERE id = ?`).run(...vals, req.params.jobId);
+  res.json({ ok: true });
+});
+
 // GET /api/models/jobs — lista jobs
 router.get('/jobs/list', requireAuth, (req, res) => {
   const { status } = req.query;
