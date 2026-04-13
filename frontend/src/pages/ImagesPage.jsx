@@ -93,7 +93,7 @@ export default function ImagesPage() {
             </thead>
             <tbody>
               {images.map(img => (
-                <tr key={img.id} className="table-row">
+                <tr key={img.id} className="table-row cursor-pointer" onClick={(e) => { e.stopPropagation(); navigate(`/images/${img.id}/annotate`) }}>
                   <td className="px-4 py-3 text-gray-200 max-w-xs truncate">{img.original_name}</td>
                   <td className="px-4 py-3"><Badge value={img.type}/></td>
                   <td className="px-4 py-3"><Badge value={img.status}/></td>
@@ -101,7 +101,7 @@ export default function ImagesPage() {
                   <td className="px-4 py-3 text-gray-400 text-xs">{img.uploader_name}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">{new Date(img.created_at).toLocaleDateString('pt-BR')}</td>
                   <td className="px-4 py-3">
-                    <button className="btn-ghost p-1.5" title="Anotar" onClick={() => navigate(`/images/${img.id}/annotate`)}>
+                    <button className="btn-ghost p-1.5" title="Anotar" onClick={(e) => { e.stopPropagation(); navigate(`/images/${img.id}/annotate`) }}>
                       <Edit3 size={14}/>
                     </button>
                   </td>
