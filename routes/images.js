@@ -40,17 +40,30 @@ router.get('/', requireAuth, (req, res) => {
 router.get('/stats', requireAuth, (req, res) => {
   const stats = db.prepare(`
     SELECT
-      COUNT(*) as total,
-      SUM(CASE WHEN status='pending'    THEN 1 ELSE 0 END) as pending,
-      SUM(CASE WHEN status='annotating' THEN 1 ELSE 0 END) as annotating,
-      SUM(CASE WHEN status='annotated'  THEN 1 ELSE 0 END) as annotated,
-      SUM(CASE WHEN status='reviewed'   THEN 1 ELSE 0 END) as reviewed,
-      SUM(CASE WHEN status='approved'   THEN 1 ELSE 0 END) as approved,
-      SUM(CASE WHEN type='panoramica'   THEN 1 ELSE 0 END) as panoramica,
-      SUM(CASE WHEN type='periapical'   THEN 1 ELSE 0 END) as periapical
+      COUNT(*)                                                         AS total,
+      SUM(CASE WHEN type='panoramica'  THEN 1 ELSE 0 END)             AS panoramica,
+      SUM(CASE WHEN type='periapical'  THEN 1 ELSE 0 END)             AS periapical,
+      SUM(CASE WHEN type='cbct'        THEN 1 ELSE 0 END)             AS cbct,
+      SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END)             AS pending,
+      SUM(CASE WHEN status='annotating' THEN 1 ELSE 0 END)            AS annotating,
+      SUM(CASE WHEN status='reviewed'  THEN 1 ELSE 0 END)             AS reviewed,
+      SUM(CASE WHEN status='approved'  THEN 1 ELSE 0 END)             AS approved,
+      SUM(CASE WHEN status='rejected'  THEN 1 ELSE 0 END)             AS rejected
     FROM images
   `).get();
-  res.json(stats);
+
+  // Contagens de anotações por status (para o dashboard)
+  const annStats = db.prepare(`
+    SELECT
+      COUNT(*)                                                          AS total_annotations,
+      SUM(CASE WHEN status='draft'     THEN 1 ELSE 0 END)              AS annotations_draft,
+      SUM(CASE WHEN status='submitted' THEN 1 ELSE 0 END)              AS annotations_submitted,
+      SUM(CASE WHEN status='approved'  THEN 1 ELSE 0 END)              AS annotations_approved,
+      SUM(CASE WHEN status='rejected'  THEN 1 ELSE 0 END)              AS annotations_rejected
+    FROM annotations
+  `).get();
+
+  res.json({ ...stats, ...annStats });
 });
 
 // POST /api/images/upload

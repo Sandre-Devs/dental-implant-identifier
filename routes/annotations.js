@@ -111,14 +111,27 @@ router.post('/:id/review', requireAuth, requireRole('admin','reviewer'),
       WHERE id = ?
     `).run(status, req.user.id, reject_reason || null, req.params.id);
 
-    // Atualiza status da imagem se todas as anotações estão aprovadas
-    const pending = db.prepare(`
-      SELECT COUNT(*) as c FROM annotations WHERE image_id = ? AND status NOT IN ('approved','rejected')
-    `).get(annotation.image_id).c;
+    // Recalcula status da imagem após cada revisão
+    const counts = db.prepare(`
+      SELECT
+        SUM(CASE WHEN status = 'approved'  THEN 1 ELSE 0 END) as approved,
+        SUM(CASE WHEN status = 'rejected'  THEN 1 ELSE 0 END) as rejected,
+        SUM(CASE WHEN status NOT IN ('approved','rejected') THEN 1 ELSE 0 END) as pending
+      FROM annotations WHERE image_id = ?
+    `).get(annotation.image_id);
 
-    if (pending === 0) {
-      db.prepare(`UPDATE images SET status = 'reviewed', updated_at = datetime('now') WHERE id = ?`)
-        .run(annotation.image_id);
+    let newImageStatus = null;
+    if (counts.pending === 0 && counts.rejected === 0 && counts.approved > 0) {
+      // Todas aprovadas → imagem aprovada (pronta para dataset)
+      newImageStatus = 'approved';
+    } else if (counts.pending === 0 && counts.rejected > 0) {
+      // Todas revisadas, mas com rejeições → volta para anotando
+      newImageStatus = 'annotating';
+    }
+
+    if (newImageStatus) {
+      db.prepare(`UPDATE images SET status = ?, updated_at = datetime('now') WHERE id = ?`)
+        .run(newImageStatus, annotation.image_id);
     }
 
     res.json({ message: `Anotação ${status}.` });
