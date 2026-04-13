@@ -42,7 +42,7 @@ router.post('/train', requireAuth, requireRole('admin'),
 
     const { name, dataset_id, epochs = 100, architecture = 'yolov8m', notes } = req.body;
 
-    const dataset = db.prepare('SELECT * FROM datasets WHERE id = ? AND status = "ready"').get(dataset_id);
+    const dataset = db.prepare('SELECT * FROM datasets WHERE id = ? AND status = 'ready'').get(dataset_id);
     if (!dataset) return res.status(404).json({ error: 'Dataset não encontrado ou não está pronto.' });
 
     // Cria entrada do modelo
