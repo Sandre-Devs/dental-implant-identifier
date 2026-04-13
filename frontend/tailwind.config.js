@@ -4,6 +4,11 @@ export default {
   theme: {
     extend: {
       colors: {
+        success: {
+          400: '#6daa45',
+          500: '#437a22',
+          600: '#2e5c10',
+        },
         primary: {
           50:'#f0fafa', 100:'#d0f0f0', 200:'#a0e0e0', 300:'#60c8c8',
           400:'#30b0b0', 500:'#01696f', 600:'#0c4e54', 700:'#0f3638',

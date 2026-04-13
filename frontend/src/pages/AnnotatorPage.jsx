@@ -5,13 +5,16 @@ import Badge from '../components/ui/Badge'
 import Spinner from '../components/ui/Spinner'
 import Modal from '../components/ui/Modal'
 import toast from 'react-hot-toast'
-import { ArrowLeft, Save, Trash2, Plus, Loader2, List, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Save, Trash2, Plus, Loader2, List, ChevronDown, ChevronUp, CheckCircle, XCircle, MessageSquare } from 'lucide-react'
+import { useAuthStore } from '../store/authStore'
 
 const COLORS = ['#01696f','#3b82f6','#a855f7','#f59e0b','#ef4444','#10b981','#f97316','#06b6d4']
 
 export default function AnnotatorPage() {
   const { id }   = useParams()
   const navigate = useNavigate()
+  const { user }  = useAuthStore()
+  const canReview = ['admin','reviewer'].includes(user?.role)
   const canvasRef     = useRef(null)
   const containerRef  = useRef(null)
 
@@ -27,6 +30,9 @@ export default function AnnotatorPage() {
   const [startPt, setStartPt]         = useState(null)
   const [currentBox, setCurrentBox]   = useState(null)
   const [saving, setSaving]           = useState(false)
+  const [reviewTarget, setReviewTarget] = useState(null)  // { id, action: 'approved'|'rejected' }
+  const [rejectReason, setRejectReason] = useState('')
+  const [reviewLoading, setReviewLoading] = useState(false)
   const [listOpen, setListOpen]       = useState(false)
   const [formOpen, setFormOpen]       = useState(false)
   const [panelOpen, setPanelOpen]     = useState(false) // accordion desktop
@@ -194,6 +200,30 @@ export default function AnnotatorPage() {
     } catch {}
   }
 
+  /* ─── Review ──────────────────────────────────────── */
+  const openReview = (ann, action) => {
+    setRejectReason('')
+    setReviewTarget({ id: ann.id, action })
+  }
+
+  const confirmReview = async () => {
+    if (!reviewTarget) return
+    if (reviewTarget.action === 'rejected' && !rejectReason.trim())
+      return toast.error('Informe o motivo da rejeição.')
+    setReviewLoading(true)
+    try {
+      await api.post(`/annotations/${reviewTarget.id}/review`, {
+        status: reviewTarget.action,
+        reject_reason: reviewTarget.action === 'rejected' ? rejectReason : undefined,
+      })
+      toast.success(reviewTarget.action === 'approved' ? 'Aprovada! ✅' : 'Rejeitada.')
+      setReviewTarget(null)
+      load()
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Erro ao revisar.')
+    } finally { setReviewLoading(false) }
+  }
+
   /* ─── Form (reutilizado desktop + modal mobile) ─── */
   const FormContent = (
     <div className="space-y-3 p-4">
@@ -341,6 +371,8 @@ export default function AnnotatorPage() {
                 selected={selected}
                 setSelected={setSelected}
                 handleDelete={handleDelete}
+                canReview={canReview}
+                openReview={openReview}
               />
             )}
             {!panelOpen && annotations.length > 0 && (
@@ -392,12 +424,60 @@ export default function AnnotatorPage() {
             selected={selected}
             setSelected={setSelected}
             handleDelete={handleDelete}
+            canReview={canReview}
+            openReview={openReview}
           />
           {draftCount > 0 && (
             <button className="btn-primary w-full justify-center text-sm" onClick={() => { handleSubmitAll(); setListOpen(false) }}>
               <Save size={14}/> Enviar {draftCount} rascunho(s) para revisão
             </button>
           )}
+        </div>
+      </Modal>
+
+      {/* ── Modal: revisão ── */}
+      <Modal
+        open={!!reviewTarget}
+        onClose={() => setReviewTarget(null)}
+        title={reviewTarget?.action === 'approved' ? 'Aprovar anotação' : 'Rejeitar anotação'}
+        size="sm"
+      >
+        <div className="p-4 space-y-4">
+          {reviewTarget?.action === 'rejected' && (
+            <div>
+              <label className="label">Motivo da rejeição *</label>
+              <textarea
+                className="input resize-none h-20"
+                placeholder="Descreva o problema..."
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+              />
+            </div>
+          )}
+          {reviewTarget?.action === 'approved' && (
+            <p className="text-sm text-gray-400">Confirma a aprovação desta anotação?</p>
+          )}
+          <div className="flex gap-2">
+            <button className="btn-secondary flex-1 text-sm" onClick={() => setReviewTarget(null)}>
+              Cancelar
+            </button>
+            <button
+              className={`flex-1 text-sm flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 font-medium transition-all ${
+                reviewTarget?.action === 'approved'
+                  ? 'bg-success-600 hover:bg-success-500 text-white'
+                  : 'bg-red-700 hover:bg-red-600 text-white'
+              }`}
+              disabled={reviewLoading}
+              onClick={confirmReview}
+            >
+              {reviewLoading
+                ? <Loader2 size={14} className="animate-spin"/>
+                : reviewTarget?.action === 'approved'
+                  ? <><CheckCircle size={14}/> Aprovar</>
+                  : <><XCircle size={14}/> Rejeitar</>
+              }
+            </button>
+          </div>
         </div>
       </Modal>
 
@@ -414,7 +494,7 @@ export default function AnnotatorPage() {
   )
 }
 
-function AnnotationList({ annotations, selected, setSelected, handleDelete }) {
+function AnnotationList({ annotations, selected, setSelected, handleDelete, canReview, openReview }) {
   if (!annotations.length)
     return <p className="text-gray-600 text-xs text-center py-4">Nenhuma anotação ainda.</p>
   return (
@@ -433,12 +513,36 @@ function AnnotationList({ annotations, selected, setSelected, handleDelete }) {
               <Badge value={ann.status}/>
             </div>
           </div>
-          {ann.status === 'draft' && (
-            <button className="text-gray-500 hover:text-red-400 p-1 flex-shrink-0"
-              onClick={e => { e.stopPropagation(); handleDelete(ann.id) }}>
-              <Trash2 size={13}/>
-            </button>
-          )}
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            {ann.status === 'draft' && (
+              <button className="text-gray-500 hover:text-red-400 p-1"
+                title="Deletar"
+                onClick={e => { e.stopPropagation(); handleDelete(ann.id) }}>
+                <Trash2 size={13}/>
+              </button>
+            )}
+            {canReview && ann.status === 'submitted' && (
+              <>
+                <button className="text-gray-500 hover:text-green-400 p-1"
+                  title="Aprovar"
+                  onClick={e => { e.stopPropagation(); openReview(ann, 'approved') }}>
+                  <CheckCircle size={14}/>
+                </button>
+                <button className="text-gray-500 hover:text-red-400 p-1"
+                  title="Rejeitar"
+                  onClick={e => { e.stopPropagation(); openReview(ann, 'rejected') }}>
+                  <XCircle size={14}/>
+                </button>
+              </>
+            )}
+            {canReview && ann.status === 'rejected' && ann.reject_reason && (
+              <button className="text-gray-500 hover:text-yellow-400 p-1"
+                title={ann.reject_reason}
+                onClick={e => e.stopPropagation()}>
+                <MessageSquare size={13}/>
+              </button>
+            )}
+          </div>
         </div>
       ))}
     </div>
