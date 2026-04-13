@@ -1,0 +1,5 @@
+{
+  "app_type": "node",
+  "startup_file": "server.js",
+  "node_version": "20"
+}

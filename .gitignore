@@ -1,0 +1,27 @@
+# Dependências
+node_modules/
+
+# Ambiente (NUNCA subir)
+.env
+
+# Banco de dados (gerado em produção)
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Uploads (arquivos de usuário)
+uploads/*
+!uploads/.gitkeep
+
+# Logs
+logs/
+*.log
+
+# Build do frontend (será gerado no CI/CD)
+public/*
+!public/.gitkeep
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
