@@ -80,15 +80,20 @@ export default function AnnotatorPage() {
     annotations.forEach((ann, i) => {
       if (ann.bbox_x == null) return
       const color = COLORS[i % COLORS.length]
+      // Valores normalizados (0–1) → pixels do canvas
+      const bx = ann.bbox_x * canvas.width
+      const by = ann.bbox_y * canvas.height
+      const bw = ann.bbox_w * canvas.width
+      const bh = ann.bbox_h * canvas.height
       ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.setLineDash([])
-      ctx.strokeRect(ann.bbox_x, ann.bbox_y, ann.bbox_w, ann.bbox_h)
+      ctx.strokeRect(bx, by, bw, bh)
       ctx.fillStyle = color + 'cc'
-      ctx.fillRect(ann.bbox_x, ann.bbox_y - 20, 130, 20)
+      ctx.fillRect(bx, by - 20, 130, 20)
       ctx.fillStyle = '#fff'; ctx.font = '13px Inter,sans-serif'
-      ctx.fillText((`#${i+1} ${ann.manufacturer_name||'?'}`).slice(0,18), ann.bbox_x+4, ann.bbox_y-5)
+      ctx.fillText((`#${i+1} ${ann.manufacturer_name||'?'}`).slice(0,18), bx+4, by-5)
       if (selected === ann.id) {
         ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.setLineDash([5,3])
-        ctx.strokeRect(ann.bbox_x-2, ann.bbox_y-2, ann.bbox_w+4, ann.bbox_h+4)
+        ctx.strokeRect(bx-2, by-2, bw+4, bh+4)
         ctx.setLineDash([])
       }
     })
@@ -156,10 +161,14 @@ export default function AnnotatorPage() {
     if (!currentBox) return
     setSaving(true)
     try {
+      const W = imgEl?.naturalWidth  || 1
+      const H = imgEl?.naturalHeight || 1
       await api.post('/annotations', {
         image_id: id,
-        bbox_x: Math.round(currentBox.x), bbox_y: Math.round(currentBox.y),
-        bbox_w: Math.round(currentBox.w), bbox_h: Math.round(currentBox.h),
+        bbox_x: parseFloat((currentBox.x / W).toFixed(6)),
+        bbox_y: parseFloat((currentBox.y / H).toFixed(6)),
+        bbox_w: parseFloat((currentBox.w / W).toFixed(6)),
+        bbox_h: parseFloat((currentBox.h / H).toFixed(6)),
         ...form,
         diameter_mm: form.diameter_mm || null,
         length_mm:   form.length_mm   || null,
