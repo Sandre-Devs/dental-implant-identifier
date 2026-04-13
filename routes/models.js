@@ -42,7 +42,7 @@ router.post('/train', requireAuth, requireRole('admin'),
 
     const { name, dataset_id, epochs = 100, architecture = 'yolov8m', notes } = req.body;
 
-    const dataset = db.prepare('SELECT * FROM datasets WHERE id = ? AND status = 'ready'').get(dataset_id);
+    const dataset = db.prepare(`SELECT * FROM datasets WHERE id = ? AND status = 'ready'`).get(dataset_id);
     if (!dataset) return res.status(404).json({ error: 'Dataset não encontrado ou não está pronto.' });
 
     // Cria entrada do modelo
@@ -93,7 +93,7 @@ router.post('/:id/deploy', requireAuth, requireRole('admin'), (req, res) => {
   db.prepare(`UPDATE ml_models SET status = 'deployed', updated_at = datetime('now') WHERE id = ?`)
     .run(req.params.id);
 
-  res.json({ message: 'Modelo deployado com sucesso.' });
+n  res.json({ message: 'Modelo deployado com sucesso.' });
 });
 
 // GET /api/models/jobs — lista jobs
