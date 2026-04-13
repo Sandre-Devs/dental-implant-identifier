@@ -30,6 +30,7 @@ app.use('/api/auth/login', rateLimit({
 app.use('/api/auth',          require('./routes/auth'));
 app.use('/api/users',         require('./routes/users'));
 app.use('/api/images',        require('./routes/images'));
+app.use('/api/jobs',          require('./routes/jobs'));
 app.use('/api/annotations',   require('./routes/annotations'));
 app.use('/api/manufacturers', require('./routes/manufacturers'));
 app.use('/api/datasets',      require('./routes/datasets'));

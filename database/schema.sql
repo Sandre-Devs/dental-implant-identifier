@@ -97,6 +97,11 @@ CREATE TABLE IF NOT EXISTS annotations (
   osseointegrated INTEGER DEFAULT 0,
   notes           TEXT,
 
+  -- Detecção automática
+  auto_detected   INTEGER DEFAULT 0,   -- 1 = gerada por modelo ML
+  ai_model_id     TEXT REFERENCES ml_models(id),
+  ai_confidence   REAL,                -- 0.0-1.0 score do modelo
+
   reject_reason   TEXT,
   reviewed_at     TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),

@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const db      = require('../database/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload, handleUploadError } = require('../middleware/upload');
+const { detectAndSave }  = require('../services/inferenceService');
 
 // GET /api/images — lista com filtros
 router.get('/', requireAuth, (req, res) => {
@@ -99,7 +100,27 @@ router.post('/upload', requireAuth,
       inserted.push({ id, filename: file.filename, original_name: file.originalname, width, height, type });
     }
 
+    // Responde imediatamente — detecção roda em background
     res.status(201).json({ uploaded: inserted.length, images: inserted });
+
+    // Background: roda inferência em cada imagem (não bloqueia a resposta)
+    setImmediate(async () => {
+      for (const img of inserted) {
+        try {
+          const filePath = path.resolve(__dirname, '../uploads', img.filename);
+          const result   = await detectAndSave({
+            imageId:    img.id,
+            imagePath:  filePath,
+            uploadedBy: req.user.id,
+          });
+          if (!result.skipped) {
+            console.log(`[inference] ${img.original_name}: ${result.detected} implante(s) detectado(s)`);
+          }
+        } catch(e) {
+          console.error(`[inference] Erro em ${img.original_name}:`, e.message);
+        }
+      }
+    });
   }
 );
 

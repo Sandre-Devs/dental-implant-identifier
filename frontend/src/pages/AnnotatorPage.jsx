@@ -91,12 +91,21 @@ export default function AnnotatorPage() {
       const by = ann.bbox_y * canvas.height
       const bw = ann.bbox_w * canvas.width
       const bh = ann.bbox_h * canvas.height
-      ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.setLineDash([])
+      const isAI = ann.auto_detected === 1
+      // IA = tracejado laranja; manual = sólido colorido
+      ctx.strokeStyle = isAI ? '#f97316' : color
+      ctx.lineWidth   = isAI ? 2.5 : 3
+      ctx.setLineDash(isAI ? [8, 4] : [])
       ctx.strokeRect(bx, by, bw, bh)
-      ctx.fillStyle = color + 'cc'
-      ctx.fillRect(bx, by - 20, 130, 20)
-      ctx.fillStyle = '#fff'; ctx.font = '13px Inter,sans-serif'
-      ctx.fillText((`#${i+1} ${ann.manufacturer_name||'?'}`).slice(0,18), bx+4, by-5)
+      ctx.setLineDash([])
+      // Label background
+      const labelW = 160
+      ctx.fillStyle = (isAI ? '#f97316' : color) + 'dd'
+      ctx.fillRect(bx, by - 22, labelW, 22)
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Inter,sans-serif'
+      const aiTag = isAI ? '🤖 ' : ''
+      const conf  = isAI && ann.ai_confidence ? ` ${Math.round(ann.ai_confidence*100)}%` : ''
+      ctx.fillText((aiTag + `#${i+1} ${ann.manufacturer_name||'?'}` + conf).slice(0,22), bx+4, by-6)
       if (selected === ann.id) {
         ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.setLineDash([5,3])
         ctx.strokeRect(bx-2, by-2, bw+4, bh+4)
@@ -325,6 +334,21 @@ export default function AnnotatorPage() {
       <div className="flex gap-3 flex-1 min-h-0">
 
         {/* Canvas — ocupa toda a largura no mobile */}
+        {/* Banner IA */}
+        {annotations.some(a => a.auto_detected === 1) && (
+          <div className="flex-shrink-0 bg-orange-500/10 border border-orange-500/30 rounded-lg px-3 py-2 flex items-start gap-2">
+            <span className="text-lg leading-none">🤖</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-orange-300">
+                {annotations.filter(a => a.auto_detected === 1).length} implante(s) detectado(s) automaticamente
+              </p>
+              <p className="text-xs text-orange-400/70 mt-0.5">
+                Revise as caixas tracejadas laranja, preencha fabricante e sistema, depois envie para revisão.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div
           ref={containerRef}
           className="flex-1 card overflow-auto bg-gray-950 min-w-0"
@@ -506,7 +530,15 @@ function AnnotationList({ annotations, selected, setSelected, handleDelete, canR
           onClick={() => setSelected(selected === ann.id ? null : ann.id)}>
           <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: COLORS[i % COLORS.length] }}/>
           <div className="flex-1 min-w-0">
-            <p className="text-gray-200 font-medium truncate">#{i+1} {ann.manufacturer_name || 'Sem fabricante'}</p>
+            <p className="text-gray-200 font-medium truncate flex items-center gap-1">
+              {ann.auto_detected === 1 && <span className="text-orange-400 text-xs">🤖</span>}
+              #{i+1} {ann.manufacturer_name || 'Sem fabricante'}
+              {ann.auto_detected === 1 && ann.ai_confidence && (
+                <span className="text-xs text-orange-400/60 font-normal ml-1">
+                  {Math.round(ann.ai_confidence * 100)}%
+                </span>
+              )}
+            </p>
             <div className="flex items-center gap-1 mt-0.5">
               <span className="text-gray-500">{ann.position_fdi || '—'}</span>
               <span className="text-gray-700">·</span>
