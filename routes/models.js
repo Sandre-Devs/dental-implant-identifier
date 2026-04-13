@@ -93,7 +93,7 @@ router.post('/:id/deploy', requireAuth, requireRole('admin'), (req, res) => {
   db.prepare(`UPDATE ml_models SET status = 'deployed', updated_at = datetime('now') WHERE id = ?`)
     .run(req.params.id);
 
-n  res.json({ message: 'Modelo deployado com sucesso.' });
+res.json({ message: 'Modelo deployado com sucesso.' });
 });
 
 // GET /api/models/jobs — lista jobs
