@@ -5,14 +5,15 @@ import Badge from '../components/ui/Badge'
 import Spinner from '../components/ui/Spinner'
 import Modal from '../components/ui/Modal'
 import toast from 'react-hot-toast'
-import { ArrowLeft, Save, Trash2, Plus, Loader2, List } from 'lucide-react'
+import { ArrowLeft, Save, Trash2, Plus, Loader2, List, ChevronDown, ChevronUp } from 'lucide-react'
 
 const COLORS = ['#01696f','#3b82f6','#a855f7','#f59e0b','#ef4444','#10b981','#f97316','#06b6d4']
 
 export default function AnnotatorPage() {
   const { id }   = useParams()
   const navigate = useNavigate()
-  const canvasRef = useRef(null)
+  const canvasRef     = useRef(null)
+  const containerRef  = useRef(null)
 
   const [image, setImage]             = useState(null)
   const [imgEl, setImgEl]             = useState(null)
@@ -21,20 +22,21 @@ export default function AnnotatorPage() {
   const [manufacturers, setManufacturers] = useState([])
   const [systems, setSystems]         = useState([])
   const [loading, setLoading]         = useState(true)
-  const [selected, setSelected]       = useState(null)   // annId | 'new' | null
+  const [selected, setSelected]       = useState(null)
   const [drawing, setDrawing]         = useState(false)
   const [startPt, setStartPt]         = useState(null)
   const [currentBox, setCurrentBox]   = useState(null)
   const [saving, setSaving]           = useState(false)
-  const [listOpen, setListOpen]       = useState(false)  // modal de lista no mobile
-  const [formOpen, setFormOpen]       = useState(false)  // modal de form no mobile
+  const [listOpen, setListOpen]       = useState(false)
+  const [formOpen, setFormOpen]       = useState(false)
+  const [panelOpen, setPanelOpen]     = useState(false) // accordion desktop
   const [form, setForm] = useState({
     manufacturer_id:'', system_id:'', confidence:'low',
     position_fdi:'', diameter_mm:'', length_mm:'',
     osseointegrated:false, notes:''
   })
 
-  /* ── Data loading ─────────────────────────────────────────── */
+  /* ─── Load ─────────────────────────────────────── */
   const load = useCallback(() => {
     Promise.all([
       api.get(`/images/${id}`),
@@ -47,7 +49,6 @@ export default function AnnotatorPage() {
 
   useEffect(() => { load() }, [load])
 
-  // Carrega imagem via fetch + blob (envia JWT, evita 401 em <img src>)
   useEffect(() => {
     if (!id) return
     api.get(`/images/${id}/file`, { responseType:'blob' })
@@ -67,7 +68,7 @@ export default function AnnotatorPage() {
     else setSystems([])
   }, [form.manufacturer_id])
 
-  /* ── Canvas draw ──────────────────────────────────────────── */
+  /* ─── Draw ─────────────────────────────────────── */
   const drawAll = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas || !imgEl || !imgLoaded) return
@@ -101,8 +102,8 @@ export default function AnnotatorPage() {
 
   useEffect(() => { drawAll() }, [drawAll])
 
-  /* ── Helpers: coordenada relativa ao canvas ───────────────── */
-  const getPosFromClient = (clientX, clientY) => {
+  /* ─── Coordenada relativa ao canvas ────────────── */
+  const getPos = (clientX, clientY) => {
     const c = canvasRef.current, r = c.getBoundingClientRect()
     return {
       x: (clientX - r.left) * (c.width  / r.width),
@@ -110,16 +111,16 @@ export default function AnnotatorPage() {
     }
   }
 
-  /* ── Mouse events ─────────────────────────────────────────── */
+  /* ─── Mouse ─────────────────────────────────────── */
   const onMouseDown = e => {
     if (e.button !== 0) return
-    const p = getPosFromClient(e.clientX, e.clientY)
+    const p = getPos(e.clientX, e.clientY)
     setDrawing(true); setStartPt(p)
     setCurrentBox({ x:p.x, y:p.y, w:0, h:0 })
   }
   const onMouseMove = e => {
     if (!drawing || !startPt) return
-    const p = getPosFromClient(e.clientX, e.clientY)
+    const p = getPos(e.clientX, e.clientY)
     setCurrentBox({ x:Math.min(startPt.x,p.x), y:Math.min(startPt.y,p.y), w:Math.abs(p.x-startPt.x), h:Math.abs(p.y-startPt.y) })
   }
   const onMouseUp = () => {
@@ -129,19 +130,17 @@ export default function AnnotatorPage() {
     else setCurrentBox(null)
   }
 
-  /* ── Touch events ─────────────────────────────────────────── */
+  /* ─── Touch ─────────────────────────────────────── */
   const onTouchStart = e => {
     e.preventDefault()
-    const t = e.touches[0]
-    const p = getPosFromClient(t.clientX, t.clientY)
+    const t = e.touches[0], p = getPos(t.clientX, t.clientY)
     setDrawing(true); setStartPt(p)
     setCurrentBox({ x:p.x, y:p.y, w:0, h:0 })
   }
   const onTouchMove = e => {
     e.preventDefault()
     if (!drawing || !startPt) return
-    const t = e.touches[0]
-    const p = getPosFromClient(t.clientX, t.clientY)
+    const t = e.touches[0], p = getPos(t.clientX, t.clientY)
     setCurrentBox({ x:Math.min(startPt.x,p.x), y:Math.min(startPt.y,p.y), w:Math.abs(p.x-startPt.x), h:Math.abs(p.y-startPt.y) })
   }
   const onTouchEnd = e => {
@@ -152,7 +151,7 @@ export default function AnnotatorPage() {
     else setCurrentBox(null)
   }
 
-  /* ── Save / Delete / Submit ───────────────────────────────── */
+  /* ─── Actions ───────────────────────────────────── */
   const handleSave = async () => {
     if (!currentBox) return
     setSaving(true)
@@ -178,15 +177,15 @@ export default function AnnotatorPage() {
 
   const handleSubmitAll = async () => {
     const drafts = annotations.filter(a => a.status === 'draft')
-    if (!drafts.length) return toast.error('Nenhum rascunho para enviar.')
+    if (!drafts.length) return toast.error('Nenhum rascunho.')
     try {
       await Promise.all(drafts.map(a => api.patch(`/annotations/${a.id}`, { status:'submitted' })))
-      toast.success(`${drafts.length} anotação(ões) enviada(s) para revisão!`)
+      toast.success(`${drafts.length} enviada(s) para revisão!`)
       load()
     } catch {}
   }
 
-  /* ── Form JSX (reutilizado em desktop e modal mobile) ─────── */
+  /* ─── Form (reutilizado desktop + modal mobile) ─── */
   const FormContent = (
     <div className="space-y-3 p-4">
       <div>
@@ -243,11 +242,13 @@ export default function AnnotatorPage() {
           className="w-4 h-4 accent-primary-500"/>
         <label htmlFor="osso" className="text-xs text-gray-400">Osseointegrado</label>
       </div>
-      <div className="flex gap-2">
-        <button className="btn-secondary flex-1 text-xs"
-          onClick={() => { setCurrentBox(null); setSelected(null); setFormOpen(false) }}>Cancelar</button>
-        <button className="btn-primary flex-1 text-xs" disabled={saving} onClick={handleSave}>
-          {saving ? <Loader2 size={13} className="animate-spin"/> : <><Save size={13}/> Salvar</>}
+      <div className="flex gap-2 pt-1">
+        <button className="btn-secondary flex-1 text-sm"
+          onClick={() => { setCurrentBox(null); setSelected(null); setFormOpen(false) }}>
+          Cancelar
+        </button>
+        <button className="btn-primary flex-1 text-sm" disabled={saving} onClick={handleSave}>
+          {saving ? <Loader2 size={14} className="animate-spin"/> : <><Save size={14}/> Salvar</>}
         </button>
       </div>
     </div>
@@ -258,48 +259,53 @@ export default function AnnotatorPage() {
   const draftCount = annotations.filter(a => a.status==='draft').length
 
   return (
-    <div className="flex flex-col h-full gap-3">
+    /*
+      Layout mobile: coluna única — toolbar → canvas full-width → barra de ações fixada embaixo
+      Layout desktop (lg+): toolbar → [canvas | painel lateral]
+    */
+    <div className="flex flex-col h-full gap-2">
 
       {/* ── Toolbar ── */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <button className="btn-ghost" onClick={() => navigate('/images')}>
-          <ArrowLeft size={16}/> Voltar
+      <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+        <button className="btn-ghost px-2 py-1.5" onClick={() => navigate('/images')}>
+          <ArrowLeft size={16}/>
+          <span className="hidden sm:inline ml-1">Voltar</span>
         </button>
         <div className="flex-1 min-w-0">
-          <h2 className="font-semibold text-gray-100 text-sm sm:text-base truncate">{image?.original_name}</h2>
-          <p className="text-xs text-gray-500 hidden sm:block">{image?.width}×{image?.height}px</p>
+          <p className="font-semibold text-gray-100 text-sm truncate">{image?.original_name}</p>
+          <p className="text-xs text-gray-500">{image?.width}×{image?.height}px · <Badge value={image?.type}/></p>
         </div>
-        {/* Lista de anotações — mobile */}
-        <button className="btn-secondary text-xs lg:hidden relative" onClick={() => setListOpen(true)}>
-          <List size={14}/> Anotações
-          {annotations.length > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-primary-500 text-white text-xs flex items-center justify-center">
-              {annotations.length}
-            </span>
-          )}
-        </button>
         {draftCount > 0 && (
-          <button className="btn-primary text-xs" onClick={handleSubmitAll}>
+          <button className="btn-primary text-xs px-3 py-1.5" onClick={handleSubmitAll}>
             <Save size={13}/> Enviar ({draftCount})
           </button>
         )}
       </div>
 
-      {/* ── Instrução touch ── */}
-      <p className="text-xs text-gray-600 lg:hidden text-center">
-        Arraste o dedo sobre a imagem para desenhar um bbox
-      </p>
+      {/* ── Área principal ── */}
+      <div className="flex gap-3 flex-1 min-h-0">
 
-      {/* ── Main area ── */}
-      <div className="flex gap-4 flex-1 min-h-0">
-
-        {/* Canvas */}
-        <div className="flex-1 card overflow-auto flex items-start justify-center p-2 min-w-0">
-          {!imgLoaded && <div className="flex justify-center py-20"><Spinner size="lg"/></div>}
+        {/* Canvas — ocupa toda a largura no mobile */}
+        <div
+          ref={containerRef}
+          className="flex-1 card overflow-auto bg-gray-950 min-w-0"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
+          {!imgLoaded && (
+            <div className="flex flex-col items-center justify-center h-full min-h-48 gap-3">
+              <Spinner size="lg"/>
+              <p className="text-xs text-gray-500">Carregando imagem...</p>
+            </div>
+          )}
           <canvas
             ref={canvasRef}
-            className="max-w-full touch-none"
-            style={{ display: imgLoaded ? 'block' : 'none', cursor: 'crosshair' }}
+            className="touch-none block"
+            style={{
+              display: imgLoaded ? 'block' : 'none',
+              width: '100%',        /* escala para caber na tela */
+              height: 'auto',
+              cursor: 'crosshair',
+            }}
             onMouseDown={onMouseDown}
             onMouseMove={onMouseMove}
             onMouseUp={onMouseUp}
@@ -310,24 +316,33 @@ export default function AnnotatorPage() {
         </div>
 
         {/* Painel lateral — só desktop (lg+) */}
-        <div className="hidden lg:flex w-80 flex-col gap-4 flex-shrink-0">
-          {/* Lista */}
+        <div className="hidden lg:flex w-72 xl:w-80 flex-col gap-3 flex-shrink-0">
+
+          {/* Lista de anotações */}
           <div className="card p-4 flex-shrink-0">
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
-              Anotações ({annotations.length})
-            </p>
-            <AnnotationList
-              annotations={annotations}
-              selected={selected}
-              setSelected={setSelected}
-              handleDelete={handleDelete}
-            />
+            <button
+              className="flex items-center justify-between w-full text-xs font-medium text-gray-400 uppercase tracking-wide mb-2"
+              onClick={() => setPanelOpen(!panelOpen)}>
+              <span>Anotações ({annotations.length})</span>
+              {panelOpen ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
+            </button>
+            {panelOpen && (
+              <AnnotationList
+                annotations={annotations}
+                selected={selected}
+                setSelected={setSelected}
+                handleDelete={handleDelete}
+              />
+            )}
+            {!panelOpen && annotations.length > 0 && (
+              <p className="text-xs text-gray-600">{annotations.length} anotação(ões)</p>
+            )}
           </div>
 
           {/* Form inline (desktop) */}
           {selected === 'new' && currentBox && (
             <div className="card overflow-y-auto flex-1">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide px-4 pt-4 mb-0 flex items-center gap-2">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide px-4 pt-4 flex items-center gap-2">
                 <Plus size={13}/> Nova Anotação
               </p>
               {FormContent}
@@ -336,9 +351,33 @@ export default function AnnotatorPage() {
         </div>
       </div>
 
+      {/* ── Barra de ações flutuante — só mobile ── */}
+      <div className="flex gap-2 flex-shrink-0 lg:hidden">
+        <button
+          className="btn-secondary flex-1 text-sm relative"
+          onClick={() => setListOpen(true)}>
+          <List size={15}/> Anotações
+          {annotations.length > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-primary-500 text-white text-xs flex items-center justify-center font-bold">
+              {annotations.length}
+            </span>
+          )}
+        </button>
+        {draftCount > 0 && (
+          <button className="btn-primary flex-1 text-sm" onClick={handleSubmitAll}>
+            <Save size={15}/> Enviar ({draftCount})
+          </button>
+        )}
+      </div>
+
+      {/* Dica mobile */}
+      <p className="text-xs text-gray-600 text-center flex-shrink-0 lg:hidden pb-1">
+        ✦ Arraste o dedo na imagem para marcar um implante
+      </p>
+
       {/* ── Modal: lista mobile ── */}
       <Modal open={listOpen} onClose={() => setListOpen(false)} title={`Anotações (${annotations.length})`} size="sm">
-        <div className="p-4">
+        <div className="p-4 space-y-3">
           <AnnotationList
             annotations={annotations}
             selected={selected}
@@ -346,7 +385,7 @@ export default function AnnotatorPage() {
             handleDelete={handleDelete}
           />
           {draftCount > 0 && (
-            <button className="btn-primary w-full mt-4 text-sm justify-center" onClick={() => { handleSubmitAll(); setListOpen(false) }}>
+            <button className="btn-primary w-full justify-center text-sm" onClick={() => { handleSubmitAll(); setListOpen(false) }}>
               <Save size={14}/> Enviar {draftCount} rascunho(s) para revisão
             </button>
           )}
@@ -354,33 +393,39 @@ export default function AnnotatorPage() {
       </Modal>
 
       {/* ── Modal: form mobile ── */}
-      <Modal open={formOpen && selected === 'new'} onClose={() => { setFormOpen(false); setCurrentBox(null); setSelected(null) }}
-        title="Nova Anotação" size="sm">
+      <Modal
+        open={formOpen && selected === 'new'}
+        onClose={() => { setFormOpen(false); setCurrentBox(null); setSelected(null) }}
+        title="Nova Anotação"
+        size="sm"
+      >
         {FormContent}
       </Modal>
     </div>
   )
 }
 
-/* ── Sub-componente lista (reutilizado no painel e modal) ── */
 function AnnotationList({ annotations, selected, setSelected, handleDelete }) {
   if (!annotations.length)
-    return <p className="text-gray-600 text-xs text-center py-6">Nenhuma anotação. Desenhe um bbox.</p>
+    return <p className="text-gray-600 text-xs text-center py-4">Nenhuma anotação ainda.</p>
   return (
-    <div className="space-y-2 max-h-64 overflow-y-auto">
+    <div className="space-y-1.5 max-h-60 overflow-y-auto">
       {annotations.map((ann, i) => (
         <div key={ann.id}
-          className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer border transition-all text-xs
+          className={`flex items-center gap-2 p-2.5 rounded-lg cursor-pointer border transition-all text-xs
             ${selected===ann.id ? 'border-primary-500 bg-primary-500/10' : 'border-gray-700 hover:border-gray-600'}`}
           onClick={() => setSelected(selected === ann.id ? null : ann.id)}>
-          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: COLORS[i % COLORS.length] }}/>
+          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: COLORS[i % COLORS.length] }}/>
           <div className="flex-1 min-w-0">
             <p className="text-gray-200 font-medium truncate">#{i+1} {ann.manufacturer_name || 'Sem fabricante'}</p>
-            <span className="text-gray-500">{ann.position_fdi || '—'}</span>
-            {' · '}<Badge value={ann.status}/>
+            <div className="flex items-center gap-1 mt-0.5">
+              <span className="text-gray-500">{ann.position_fdi || '—'}</span>
+              <span className="text-gray-700">·</span>
+              <Badge value={ann.status}/>
+            </div>
           </div>
           {ann.status === 'draft' && (
-            <button className="text-gray-500 hover:text-red-400 flex-shrink-0 p-1"
+            <button className="text-gray-500 hover:text-red-400 p-1 flex-shrink-0"
               onClick={e => { e.stopPropagation(); handleDelete(ann.id) }}>
               <Trash2 size={13}/>
             </button>
