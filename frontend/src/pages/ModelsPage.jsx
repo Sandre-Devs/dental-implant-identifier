@@ -8,7 +8,7 @@ import toast from 'react-hot-toast'
 import {
   BrainCircuit, Plus, Rocket, Loader2, CheckCircle2,
   Terminal, BarChart3, ChevronRight, RefreshCw,
-  Cpu, Archive, AlertCircle, Zap, Trash2
+  Cpu, Archive, AlertCircle, Zap, Trash2, Upload, FileUp
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -412,6 +412,20 @@ export default function ModelsPage() {
     } catch {} finally { setSaving(false) }
   }
 
+  const handleUploadModel = async (formData) => {
+    setUploading(true)
+    try {
+      await api.post('/models/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      toast.success('Modelo importado com sucesso!')
+      setUploadModal(false)
+      load()
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Erro ao importar modelo.')
+    } finally { setUploading(false) }
+  }
+
   const handleDeploy = async id => {
     try {
       await api.post(`/models/${id}/deploy`)
@@ -464,6 +478,9 @@ export default function ModelsPage() {
         </div>
         <div className="flex items-center gap-2">
           <button className="btn-ghost text-xs" onClick={() => load()} title="Atualizar"><RefreshCw size={14}/></button>
+          <button className="btn-ghost text-xs border border-gray-700 px-3 py-1.5 flex items-center gap-1.5" onClick={() => setUploadModal(true)}>
+            <FileUp size={14}/> Importar .pt
+          </button>
           <button className="btn-primary" onClick={() => setModal(true)}><Plus size={16}/> Novo Treino</button>
         </div>
       </div>
@@ -632,5 +649,124 @@ export default function ModelsPage() {
         </div>
       </Modal>
     </div>
+
+      {/* Modal — Importar modelo .pt */}
+      {uploadModal && (
+        <Modal title="Importar Modelo Treinado" onClose={() => setUploadModal(false)}>
+          <UploadModelForm
+            onSubmit={handleUploadModel}
+            loading={uploading}
+            onCancel={() => setUploadModal(false)}
+          />
+        </Modal>
+      )}
+    </div>
+  )
+}
+/* ── Modal de importação de modelo .pt ─────────────────────── */
+function UploadModelForm({ onSubmit, loading, onCancel }) {
+  const [file,   setFile]   = useState(null)
+  const [name,   setName]   = useState('')
+  const [arch,   setArch]   = useState('yolov8s')
+  const [epochs, setEpochs] = useState('')
+  const [map50,  setMap50]  = useState('')
+  const [notes,  setNotes]  = useState('Importado do Google Colab')
+  const [drag,   setDrag]   = useState(false)
+  const inputRef = useRef(null)
+
+  const handleDrop = e => {
+    e.preventDefault(); setDrag(false)
+    const f = e.dataTransfer.files[0]
+    if (f?.name.endsWith('.pt')) { setFile(f); if (!name) setName(f.name.replace('.pt','')) }
+    else toast.error('Apenas arquivos .pt são aceitos.')
+  }
+
+  const handleFile = e => {
+    const f = e.target.files[0]
+    if (f) { setFile(f); if (!name) setName(f.name.replace('.pt','')) }
+  }
+
+  const handleSubmit = e => {
+    e.preventDefault()
+    if (!file) return toast.error('Selecione um arquivo .pt.')
+    if (!name.trim()) return toast.error('Nome obrigatório.')
+    const fd = new FormData()
+    fd.append('model', file)
+    fd.append('name', name.trim())
+    fd.append('architecture', arch)
+    if (epochs) fd.append('epochs', epochs)
+    if (map50)  fd.append('map50', parseFloat(map50) / 100)
+    if (notes)  fd.append('notes', notes)
+    onSubmit(fd)
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Drop zone */}
+      <div
+        className={clsx(
+          'border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors',
+          drag ? 'border-primary-400 bg-primary-500/10' : 'border-gray-700 hover:border-gray-500',
+          file && 'border-green-500/50 bg-green-500/5'
+        )}
+        onDragOver={e => { e.preventDefault(); setDrag(true) }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={handleDrop}
+        onClick={() => inputRef.current?.click()}
+      >
+        <input ref={inputRef} type="file" accept=".pt" className="hidden" onChange={handleFile}/>
+        {file ? (
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
+              <CheckCircle2 size={20} className="text-green-400"/>
+            </div>
+            <p className="text-sm font-medium text-green-400">{file.name}</p>
+            <p className="text-xs text-gray-500">{(file.size/1024/1024).toFixed(1)} MB</p>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2 text-gray-500">
+            <Upload size={24}/>
+            <p className="text-sm">Arraste o arquivo <span className="font-mono text-primary-400">best.pt</span> aqui</p>
+            <p className="text-xs">ou clique para selecionar · máx 500 MB</p>
+          </div>
+        )}
+      </div>
+
+      {/* Campos */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <label className="block text-xs text-gray-400 mb-1">Nome do modelo *</label>
+          <input className="input w-full" value={name} onChange={e => setName(e.target.value)} placeholder="ex: DII-Colab-yolov8s-v1" required/>
+        </div>
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Arquitetura</label>
+          <select className="input w-full" value={arch} onChange={e => setArch(e.target.value)}>
+            {['yolov8n','yolov8s','yolov8m','yolov8l','yolov8x'].map(a => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Épocas treinadas</label>
+          <input className="input w-full" type="number" value={epochs} onChange={e => setEpochs(e.target.value)} placeholder="ex: 50"/>
+        </div>
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">mAP50 (%) — opcional</label>
+          <input className="input w-full" type="number" step="0.1" value={map50} onChange={e => setMap50(e.target.value)} placeholder="ex: 72.5"/>
+        </div>
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Notas</label>
+          <input className="input w-full" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Origem do modelo"/>
+        </div>
+      </div>
+
+      <div className="flex gap-2 justify-end pt-1">
+        <button type="button" className="btn-ghost" onClick={onCancel}>Cancelar</button>
+        <button type="submit" className="btn-primary flex items-center gap-2" disabled={loading}>
+          {loading ? <Loader2 size={14} className="animate-spin"/> : <Upload size={14}/>}
+          {loading ? 'Enviando...' : 'Importar Modelo'}
+        </button>
+      </div>
+    </form>
   )
 }

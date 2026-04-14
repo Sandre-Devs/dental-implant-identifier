@@ -1,8 +1,26 @@
-const router = require('express').Router();
+const router  = require('express').Router();
 const { body, validationResult } = require('express-validator');
 const { v4: uuidv4 } = require('uuid');
-const db = require('../database/db');
+const path    = require('path');
+const fs      = require('fs');
+const multer  = require('multer');
+const db      = require('../database/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+
+// Multer para upload de modelos .pt
+const MODELS_DIR = path.resolve(__dirname, '../models');
+fs.mkdirSync(MODELS_DIR, { recursive: true });
+const modelUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, MODELS_DIR),
+    filename:    (req, file, cb) => cb(null, `${uuidv4()}.pt`)
+  }),
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB
+  fileFilter: (req, file, cb) => {
+    const ok = file.originalname.endsWith('.pt') || file.mimetype === 'application/octet-stream'
+    cb(ok ? null : new Error('Apenas arquivos .pt são aceitos.'), ok)
+  }
+});
 
 // GET /api/models
 router.get('/', requireAuth, (req, res) => {
@@ -181,21 +199,16 @@ router.get('/jobs/list', requireAuth, (req, res) => {
 
 
 // POST /api/models/upload — recebe modelo .pt treinado externamente (ex: Colab)
-router.post('/upload', requireAuth, requireRole('admin'), (req, res) => {
+router.post('/upload', requireAuth, requireRole('admin'), modelUpload.single('model'), (req, res) => {
   const { name, architecture, epochs, map50, map95, precision, recall, notes } = req.body;
   if (!name) return res.status(400).json({ error: 'name obrigatório.' });
 
   // O arquivo vem via multipart (mesmo middleware de imagens)
   if (!req.file) return res.status(400).json({ error: 'Arquivo .pt não recebido.' });
 
-  const modelId  = uuidv4();
-  const version  = `v${new Date().toISOString().slice(0,10)}`;
-  const destDir  = require('path').resolve(__dirname, '../models');
-  const fs       = require('fs');
-  fs.mkdirSync(destDir, { recursive: true });
-
-  const dest = require('path').join(destDir, `${modelId}.pt`);
-  fs.renameSync(req.file.path, dest);
+  const modelId = req.file.filename.replace('.pt',''); // uuid já no filename
+  const version = `v${new Date().toISOString().slice(0,10)}`;
+  const dest    = req.file.path;
 
   db.prepare(`
     INSERT INTO ml_models
