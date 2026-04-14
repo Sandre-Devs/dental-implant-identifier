@@ -13,17 +13,26 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Rate limit geral — 1000 req / 15min por IP (uso normal de SPA)
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Muitas requisições. Tente novamente em breve.' }
 }));
 
+// Upload — 100 uploads / 15min (lote grande)
+app.use('/api/images/upload', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { error: 'Limite de uploads atingido. Aguarde 15 minutos.' }
+}));
+
+// Login — 20 tentativas / 10min (proteção brute-force)
 app.use('/api/auth/login', rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: 10,
+  max: 20,
   message: { error: 'Muitas tentativas de login. Aguarde 10 minutos.' }
 }));
 
