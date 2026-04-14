@@ -660,7 +660,7 @@ export default function ModelsPage() {
           />
         </Modal>
       )}
-    </div>
+  
   )
 }
 /* ── Modal de importação de modelo .pt ─────────────────────── */
