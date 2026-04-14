@@ -604,8 +604,7 @@ export default function ModelsPage() {
       )}
 
       {/* Modal — Novo Treino */}
-      {modal && (
-        <Modal title="Iniciar Novo Treino" onClose={() => setModal(false)}>
+      <Modal open={modal} title="Iniciar Novo Treino" onClose={() => setModal(false)}>
           <div className="space-y-4">
             <div>
               <label className="block text-xs text-gray-400 mb-1">Nome do modelo *</label>
@@ -655,19 +654,16 @@ export default function ModelsPage() {
               </button>
             </div>
           </div>
-        </Modal>
-      )}
+      </Modal>
 
       {/* Modal — Importar .pt */}
-      {uploadModal && (
-        <Modal title="Importar Modelo Treinado" onClose={() => setUploadModal(false)}>
+      <Modal open={uploadModal} title="Importar Modelo Treinado" onClose={() => setUploadModal(false)}>
           <UploadModelForm
             onSubmit={handleUploadModel}
             loading={uploading}
             onCancel={() => setUploadModal(false)}
           />
-        </Modal>
-      )}
+      </Modal>
 
     </div>
   )
