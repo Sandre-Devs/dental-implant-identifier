@@ -178,4 +178,35 @@ router.get('/jobs/list', requireAuth, (req, res) => {
   res.json(jobs);
 });
 
+
+// DELETE /api/models/:id — remove modelo e seu job (só failed/archived)
+router.delete('/:id', requireAuth, requireRole('admin'), (req, res) => {
+  const model = db.prepare('SELECT * FROM ml_models WHERE id = ?').get(req.params.id);
+  if (!model) return res.status(404).json({ error: 'Modelo não encontrado.' });
+  if (model.status === 'deployed')
+    return res.status(400).json({ error: 'Não é possível deletar o modelo em produção. Arquive-o primeiro.' });
+
+  // Remove jobs associados
+  db.prepare(`DELETE FROM jobs WHERE type='train_model' AND payload LIKE ?`)
+    .run(`%${req.params.id}%`);
+
+  db.prepare('DELETE FROM ml_models WHERE id = ?').run(req.params.id);
+  res.json({ message: 'Modelo removido.' });
+});
+
+// POST /api/models/:id/redeploy — redeploya modelo arquivado
+router.post('/:id/redeploy', requireAuth, requireRole('admin'), (req, res) => {
+  const model = db.prepare('SELECT * FROM ml_models WHERE id = ?').get(req.params.id);
+  if (!model) return res.status(404).json({ error: 'Modelo não encontrado.' });
+  if (!['archived', 'completed'].includes(model.status))
+    return res.status(400).json({ error: 'Apenas modelos arquivados ou concluídos podem ser redeployados.' });
+  if (!model.model_path) 
+    return res.status(400).json({ error: 'Modelo não possui arquivo .pt salvo.' });
+
+  // Arquiva o atual deployed
+  db.prepare(`UPDATE ml_models SET status='archived', updated_at=datetime('now') WHERE status='deployed'`).run();
+  db.prepare(`UPDATE ml_models SET status='deployed', updated_at=datetime('now') WHERE id=?`).run(req.params.id);
+  res.json({ message: 'Modelo redeployado com sucesso.' });
+});
+
 module.exports = router;

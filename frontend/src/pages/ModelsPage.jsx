@@ -8,7 +8,7 @@ import toast from 'react-hot-toast'
 import {
   BrainCircuit, Plus, Rocket, Loader2, CheckCircle2,
   Terminal, BarChart3, ChevronRight, RefreshCw,
-  Cpu, Archive, AlertCircle, Zap
+  Cpu, Archive, AlertCircle, Zap, Trash2
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -91,7 +91,7 @@ function MetricBadge({ label, value, color = 'text-gray-300' }) {
 }
 
 /* ── Modelo card ─────────────────────────────────── */
-function ModelCard({ model, onDeploy, onUndeploy, onSelect, isSelected }) {
+function ModelCard({ model, onDeploy, onUndeploy, onDelete, onRedeploy, onSelect, isSelected }) {
   const isDeployed  = model.status === 'deployed'
   const isTraining  = model.status === 'training'
   const isCompleted = model.status === 'completed'
@@ -166,6 +166,24 @@ function ModelCard({ model, onDeploy, onUndeploy, onSelect, isSelected }) {
                 onClick={() => onUndeploy(model.id)}
               >
                 <Archive size={13}/> Arquivar
+              </button>
+            )}
+            {isArchived && (
+              <button
+                className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 text-primary-400 hover:text-primary-300"
+                title="Colocar este modelo em produção novamente"
+                onClick={() => onRedeploy(model.id)}
+              >
+                <Rocket size={13}/> Re-Deploy
+              </button>
+            )}
+            {(isFailed || isArchived) && (
+              <button
+                className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 text-red-500 hover:text-red-400"
+                title="Deletar permanentemente"
+                onClick={() => onDelete(model.id, model.name)}
+              >
+                <Trash2 size={13}/> Deletar
               </button>
             )}
             <button
@@ -410,6 +428,27 @@ export default function ModelsPage() {
     } catch {}
   }
 
+  const handleDelete = async (id, name) => {
+    if (!window.confirm(`Deletar permanentemente o modelo "${name}"?\nEsta ação não pode ser desfeita.`)) return
+    try {
+      await api.delete(`/models/${id}`)
+      toast.success('Modelo removido.')
+      load()
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Erro ao deletar modelo.')
+    }
+  }
+
+  const handleRedeploy = async id => {
+    try {
+      await api.post(`/models/${id}/redeploy`)
+      toast.success('✅ Modelo redeployado! A IA voltará a usar este modelo.')
+      load()
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Erro ao redeploy.')
+    }
+  }
+
   const deployedModel  = models.find(m => m.status === 'deployed')
   const trainingModels = models.filter(m => m.status === 'training')
   const otherModels    = models.filter(m => !['deployed','training'].includes(m.status))
@@ -475,6 +514,8 @@ export default function ModelsPage() {
                     model={m}
                     onDeploy={handleDeploy}
                     onUndeploy={handleUndeploy}
+                    onDelete={handleDelete}
+                    onRedeploy={handleRedeploy}
                     onSelect={id => setSelectedId(prev => prev === id ? null : id)}
                     isSelected={selectedId === m.id}
                   />
@@ -496,6 +537,8 @@ export default function ModelsPage() {
                 model={deployedModel}
                 onDeploy={handleDeploy}
                 onUndeploy={handleUndeploy}
+                    onDelete={handleDelete}
+                    onRedeploy={handleRedeploy}
                 onSelect={id => setSelectedId(prev => prev === id ? null : id)}
                 isSelected={selectedId === deployedModel.id}
               />
@@ -515,6 +558,8 @@ export default function ModelsPage() {
                     model={m}
                     onDeploy={handleDeploy}
                     onUndeploy={handleUndeploy}
+                    onDelete={handleDelete}
+                    onRedeploy={handleRedeploy}
                     onSelect={id => setSelectedId(prev => prev === id ? null : id)}
                     isSelected={selectedId === m.id}
                   />
