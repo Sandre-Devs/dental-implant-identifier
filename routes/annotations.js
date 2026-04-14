@@ -86,7 +86,15 @@ router.patch('/:id', requireAuth, (req, res) => {
   if (!fields.length) return res.status(400).json({ error: 'Nenhum campo válido.' });
 
   const sets = fields.map(f => `${f} = ?`).join(', ');
-  const vals = fields.map(f => req.body[f]);
+  const vals = fields.map(f => {
+    const v = req.body[f];
+    // SQLite não aceita boolean — converte para 0/1
+    if (f === 'osseointegrated') return v ? 1 : 0;
+    // Strings vazias viram null para campos opcionais
+    if (['manufacturer_id','system_id','position_fdi','bone_level',
+         'diameter_mm','length_mm','notes'].includes(f) && v === '') return null;
+    return v ?? null;
+  });
   db.prepare(`UPDATE annotations SET ${sets}, updated_at = datetime('now') WHERE id = ?`)
     .run(...vals, req.params.id);
 
