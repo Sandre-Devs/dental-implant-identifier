@@ -178,7 +178,17 @@ function trainModel(job) {
     const runDir    = path.join(EXPORTS_DIR, `run_${model_id}`)
     fs.mkdirSync(runDir, { recursive: true })
 
-    // Script Python inline para treino
+    // Parâmetros adaptativos por arquitetura (CPU sem GPU)
+    // n/s: leves, batch maior | m: moderado | l/x: batch menor para economizar RAM
+    const archParams = {
+      'yolov8n': { batch: 16, imgsz: 640, workers: 2 },
+      'yolov8s': { batch: 8,  imgsz: 640, workers: 2 },
+      'yolov8m': { batch: 4,  imgsz: 512, workers: 1 },
+      'yolov8l': { batch: 2,  imgsz: 512, workers: 1 },
+      'yolov8x': { batch: 1,  imgsz: 416, workers: 1 },
+    }
+    const p = archParams[architecture] || archParams['yolov8s']
+
     const trainScript = path.join(runDir, 'train.py')
     fs.writeFileSync(trainScript, `
 import sys, json, os
@@ -187,43 +197,71 @@ sys.stdout.reconfigure(line_buffering=True)
 try:
     from ultralytics import YOLO
 except ImportError:
-    print("ERROR: ultralytics não instalado. Execute: pip3 install ultralytics")
+    print("ERROR: ultralytics nao instalado. Execute: pip3 install ultralytics")
     sys.exit(1)
+
+import torch
+print(f"INIT: Python {sys.version.split()[0]} | PyTorch {torch.__version__} | CUDA: {torch.cuda.is_available()}")
 
 model_path = '${architecture}.pt'
 data_yaml  = '${yamlPath.replace(/\\/g, '/')}'
 epochs     = ${epochs}
 project    = '${runDir.replace(/\\/g, '/')}'
 name       = 'train'
+batch      = ${p.batch}
+imgsz      = ${p.imgsz}
+workers    = ${p.workers}
+device     = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
-print(f"INIT: Carregando modelo base {model_path}")
-model = YOLO(model_path)
+print(f"INIT: Arquitetura={model_path} | batch={batch} | imgsz={imgsz} | device={device}")
+print(f"INIT: Carregando modelo base...")
 
-print(f"INIT: Iniciando treino — {epochs} épocas")
-results = model.train(
-    data=data_yaml,
-    epochs=epochs,
-    project=project,
-    name=name,
-    exist_ok=True,
-    verbose=True,
-    plots=True,
-    patience=20,
-    batch=8,
-    imgsz=640,
-    device='cpu',
-)
+try:
+    model = YOLO(model_path)
+except Exception as e:
+    print(f"ERROR: Falha ao carregar modelo: {e}")
+    sys.exit(1)
 
-# Métricas finais
-metrics_path = os.path.join(project, name, 'results.json')
+print(f"INIT: Iniciando treino — {epochs} epocas")
+try:
+    results = model.train(
+        data=data_yaml,
+        epochs=epochs,
+        project=project,
+        name=name,
+        exist_ok=True,
+        verbose=True,
+        plots=False,
+        patience=20,
+        batch=batch,
+        imgsz=imgsz,
+        device=device,
+        workers=workers,
+        cache=False,
+        amp=False,
+    )
+except MemoryError:
+    print("ERROR: Memoria insuficiente. Tente yolov8n ou yolov8s.")
+    sys.exit(1)
+except Exception as e:
+    print(f"ERROR: Treino falhou: {e}")
+    sys.exit(1)
+
 try:
     box = results.results_dict
     print(f"METRICS:{json.dumps(box)}")
-except:
-    pass
+except Exception as e:
+    print(f"WARN: Nao foi possivel ler metricas: {e}")
 
 best_pt = os.path.join(project, name, 'weights', 'best.pt')
-print(f"BEST_MODEL:{best_pt}")
+if os.path.exists(best_pt):
+    print(f"BEST_MODEL:{best_pt}")
+else:
+    last_pt = os.path.join(project, name, 'weights', 'last.pt')
+    if os.path.exists(last_pt):
+        print(f"BEST_MODEL:{last_pt}")
+        print("WARN: best.pt nao encontrado, usando last.pt")
+
 print("DONE")
 `)
 
