@@ -35,6 +35,9 @@ export default function AnnotatorPage() {
   const [reviewLoading, setReviewLoading] = useState(false)
   const [listOpen, setListOpen]       = useState(false)
   const [formOpen, setFormOpen]       = useState(false)
+  const [editTarget, setEditTarget]   = useState(null)   // annotation sendo editada
+  const [editForm,   setEditForm]     = useState({})
+  const [editSaving, setEditSaving]   = useState(false)
   const [panelOpen, setPanelOpen]     = useState(false) // accordion desktop
   const [redetecting, setRedetecting] = useState(false)
   const [form, setForm] = useState({
@@ -147,6 +150,39 @@ export default function AnnotatorPage() {
     }
   }
 
+  /* ─── Detecta se clique caiu dentro de um box existente ─── */
+  const hitTest = (px, py) => {
+    const c = canvasRef.current
+    if (!c) return null
+    // Percorre em ordem reversa para pegar o mais recente primeiro
+    for (let i = annotations.length - 1; i >= 0; i--) {
+      const ann = annotations[i]
+      if (ann.bbox_x == null) continue
+      const bx = ann.bbox_x * c.width,  by = ann.bbox_y * c.height
+      const bw = ann.bbox_w * c.width,  bh = ann.bbox_h * c.height
+      if (px >= bx && px <= bx + bw && py >= by && py <= by + bh) return ann
+    }
+    return null
+  }
+
+  /* ─── Abre modal de edição para uma anotação existente ───── */
+  const openEditModal = ann => {
+    setEditTarget(ann)
+    setEditForm({
+      manufacturer_id: ann.manufacturer_id || '',
+      system_id:       ann.system_id       || '',
+      confidence:      ann.confidence      || 'low',
+      position_fdi:    ann.position_fdi    || '',
+      diameter_mm:     ann.diameter_mm     || '',
+      length_mm:       ann.length_mm       || '',
+      osseointegrated: !!ann.osseointegrated,
+      notes:           ann.notes           || '',
+    })
+    // Carrega sistemas do fabricante se já tiver
+    if (ann.manufacturer_id)
+      api.get(`/manufacturers/${ann.manufacturer_id}/systems`).then(r => setSystems(r.data))
+  }
+
   /* ─── Mouse ─────────────────────────────────────── */
   const onMouseDown = e => {
     if (e.button !== 0) return
@@ -160,10 +196,16 @@ export default function AnnotatorPage() {
     setCurrentBox({ x:Math.min(startPt.x,p.x), y:Math.min(startPt.y,p.y), w:Math.abs(p.x-startPt.x), h:Math.abs(p.y-startPt.y) })
   }
   const onMouseUp = () => {
-    if (!drawing || !currentBox) return
+    if (!drawing || !currentBox || !startPt) return
     setDrawing(false)
-    if (currentBox.w > 20 && currentBox.h > 20) { setSelected('new'); setFormOpen(true) }
-    else setCurrentBox(null)
+    if (currentBox.w > 20 && currentBox.h > 20) {
+      setSelected('new'); setFormOpen(true)
+    } else {
+      // Clique simples (sem arrastar) — verifica se bateu num box existente
+      const hit = hitTest(startPt.x, startPt.y)
+      if (hit) openEditModal(hit)
+      setCurrentBox(null)
+    }
   }
 
   /* ─── Touch ─────────────────────────────────────── */
@@ -181,10 +223,15 @@ export default function AnnotatorPage() {
   }
   const onTouchEnd = e => {
     e.preventDefault()
-    if (!drawing || !currentBox) return
+    if (!drawing || !currentBox || !startPt) return
     setDrawing(false)
-    if (currentBox.w > 20 && currentBox.h > 20) { setSelected('new'); setFormOpen(true) }
-    else setCurrentBox(null)
+    if (currentBox.w > 20 && currentBox.h > 20) {
+      setSelected('new'); setFormOpen(true)
+    } else {
+      const hit = hitTest(startPt.x, startPt.y)
+      if (hit) openEditModal(hit)
+      setCurrentBox(null)
+    }
   }
 
   /* ─── Actions ───────────────────────────────────── */
@@ -211,16 +258,43 @@ export default function AnnotatorPage() {
     } catch {} finally { setSaving(false) }
   }
 
+  const handleSaveEdit = async () => {
+    if (!editTarget) return
+    if (!editForm.manufacturer_id) return toast.error('Selecione o fabricante.')
+    setEditSaving(true)
+    try {
+      await api.patch(`/annotations/${editTarget.id}`, {
+        ...editForm,
+        diameter_mm: editForm.diameter_mm || null,
+        length_mm:   editForm.length_mm   || null,
+      })
+      toast.success('Anotação atualizada!')
+      setEditTarget(null)
+      load()
+    } catch { toast.error('Erro ao salvar.') }
+    finally { setEditSaving(false) }
+  }
+
   const handleDelete = async annId => {
     try { await api.delete(`/annotations/${annId}`); toast.success('Removida.'); setSelected(null); load() } catch {}
   }
 
   const handleSubmitAll = async () => {
     const drafts = annotations.filter(a => a.status === 'draft')
-    if (!drafts.length) return toast.error('Nenhum rascunho.')
+    if (!drafts.length) return toast.error('Nenhum rascunho para enviar.')
+    const incomplete = drafts.filter(a => !a.manufacturer_id)
+    if (incomplete.length) {
+      toast.error(
+        `${incomplete.length} anotação(ões) sem fabricante. Clique em cada caixa laranja para preencher.`,
+        { duration: 5000 }
+      )
+      // Abre edição da primeira incompleta automaticamente
+      openEditModal(incomplete[0])
+      return
+    }
     try {
       await Promise.all(drafts.map(a => api.patch(`/annotations/${a.id}`, { status:'submitted' })))
-      toast.success(`${drafts.length} enviada(s) para revisão!`)
+      toast.success(`${drafts.length} enviada(s) para revisão! ✅`)
       load()
     } catch {}
   }
@@ -538,6 +612,88 @@ export default function AnnotatorPage() {
         size="sm"
       >
         {FormContent}
+      </Modal>
+
+      {/* ── Modal: editar anotação existente ── */}
+      <Modal
+        open={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        title={editTarget?.auto_detected ? '🤖 Revisar Detecção Automática' : '✏️ Editar Anotação'}
+        size="sm"
+      >
+        <div className="p-4 space-y-3">
+          {editTarget?.auto_detected === 1 && (
+            <p className="text-xs text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded-lg px-3 py-2">
+              Preencha o fabricante e sistema para habilitar o envio para revisão.
+            </p>
+          )}
+          <div>
+            <label className="label">Fabricante <span className="text-red-400">*</span></label>
+            <select className="input" value={editForm.manufacturer_id||''}
+              onChange={e => {
+                setEditForm({...editForm, manufacturer_id:e.target.value, system_id:''})
+                if (e.target.value)
+                  api.get(`/manufacturers/${e.target.value}/systems`).then(r => setSystems(r.data))
+                else setSystems([])
+              }}>
+              <option value="">Selecione o fabricante...</option>
+              {manufacturers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
+          {editForm.manufacturer_id && (
+            <div>
+              <label className="label">Sistema</label>
+              <select className="input" value={editForm.system_id||''}
+                onChange={e => setEditForm({...editForm, system_id:e.target.value})}>
+                <option value="">Selecione o sistema...</option>
+                {systems.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="label">Confiança</label>
+            <select className="input" value={editForm.confidence||'low'}
+              onChange={e => setEditForm({...editForm, confidence:e.target.value})}>
+              <option value="low">Baixa</option>
+              <option value="medium">Média</option>
+              <option value="high">Alta</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="label">Posição FDI</label>
+              <input className="input" placeholder="ex: 36" value={editForm.position_fdi||''}
+                onChange={e => setEditForm({...editForm, position_fdi:e.target.value})}/>
+            </div>
+            <div>
+              <label className="label">Diâmetro (mm)</label>
+              <input className="input" type="number" step="0.1" placeholder="4.0" value={editForm.diameter_mm||''}
+                onChange={e => setEditForm({...editForm, diameter_mm:e.target.value})}/>
+            </div>
+            <div>
+              <label className="label">Comprimento (mm)</label>
+              <input className="input" type="number" step="0.5" placeholder="11.5" value={editForm.length_mm||''}
+                onChange={e => setEditForm({...editForm, length_mm:e.target.value})}/>
+            </div>
+            <div className="flex items-center gap-2 pt-4">
+              <input type="checkbox" id="edit-osso" checked={!!editForm.osseointegrated}
+                onChange={e => setEditForm({...editForm, osseointegrated:e.target.checked})}
+                className="accent-primary-500"/>
+              <label htmlFor="edit-osso" className="text-xs text-gray-300">Osseointegrado</label>
+            </div>
+          </div>
+          <textarea className="input resize-none h-16" value={editForm.notes||''}
+            onChange={e => setEditForm({...editForm, notes:e.target.value})}
+            placeholder="Notas opcionais..."/>
+          <div className="flex gap-2 pt-1">
+            <button className="btn-secondary flex-1 text-sm" onClick={() => setEditTarget(null)}>
+              Cancelar
+            </button>
+            <button className="btn-primary flex-1 text-sm" disabled={editSaving} onClick={handleSaveEdit}>
+              {editSaving ? 'Salvando...' : 'Salvar'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   )
