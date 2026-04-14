@@ -129,4 +129,28 @@ router.post('/:id/export', requireAuth, requireRole('admin','reviewer'), (req, r
   res.status(202).json({ job_id: jobId, message: 'Job de exportação enfileirado.' });
 });
 
+
+// GET /api/datasets/:id/download — serve o dataset exportado como ZIP para o Colab
+router.get('/:id/download', requireAuth, (req, res) => {
+  const dataset = db.prepare('SELECT * FROM datasets WHERE id = ?').get(req.params.id);
+  if (!dataset) return res.status(404).json({ error: 'Dataset não encontrado.' });
+  if (!dataset.export_path) return res.status(400).json({ error: 'Dataset ainda não foi exportado.' });
+
+  const archiver = require('archiver');
+  const exportPath = dataset.export_path;
+
+  if (!require('fs').existsSync(exportPath))
+    return res.status(404).json({ error: 'Arquivos do dataset não encontrados no disco.' });
+
+  const safeName = dataset.name.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${safeName}_dataset.zip"`);
+
+  const archive = archiver('zip', { zlib: { level: 6 } });
+  archive.on('error', err => { console.error('[download]', err); res.status(500).end(); });
+  archive.pipe(res);
+  archive.directory(exportPath, false);
+  archive.finalize();
+});
+
 module.exports = router;

@@ -86,22 +86,40 @@ async function detectAndSave({ imageId, imagePath, uploadedBy }) {
     return { detected: 0, model_id: model.id, skipped: true }
   }
 
-  // Persiste detecções como anotações rascunho
+  // Mapa class_name → manufacturer_id (usa classes.json do export se existir)
+  const classesJsonPath = model.export_path
+    ? require('path').join(model.export_path, 'classes.json') : null
+  let classToMfr = {}
+  try {
+    if (classesJsonPath && fs.existsSync(classesJsonPath)) {
+      const { classes } = JSON.parse(fs.readFileSync(classesJsonPath, 'utf8'))
+      classes.forEach(name => {
+        const mfr = db.prepare(
+          'SELECT id FROM manufacturers WHERE name = ? COLLATE NOCASE'
+        ).get(name)
+        if (mfr) classToMfr[name] = mfr.id
+      })
+    }
+  } catch {}
+
+  // Persiste detecções como anotações rascunho com fabricante quando disponível
   const insertAnn = db.prepare(`
     INSERT INTO annotations
       (id, image_id, annotator_id, bbox_x, bbox_y, bbox_w, bbox_h,
-       confidence, auto_detected, ai_model_id, ai_confidence, status)
-    VALUES (?,?,?,?,?,?,?,?,1,?,?,'draft')
+       confidence, auto_detected, ai_model_id, ai_confidence, manufacturer_id, status)
+    VALUES (?,?,?,?,?,?,?,?,1,?,?,?,'draft')
   `)
 
   const insertMany = db.transaction(dets => {
     for (const d of dets) {
+      const mfrId = classToMfr[d.class_name] || null
       insertAnn.run(
         uuidv4(), imageId, uploadedBy,
         d.bbox_x, d.bbox_y, d.bbox_w, d.bbox_h,
-        'low',          // usuário preencherá depois
+        'low',
         model.id,
-        d.confidence
+        d.confidence,
+        mfrId
       )
     }
   })

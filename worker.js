@@ -88,15 +88,23 @@ async function exportDataset(job) {
     fs.mkdirSync(path.join(outDir, 'labels', split), { recursive: true })
   }
 
+  // Busca itens com fabricante para gerar classes multi-label
   const items = db.prepare(`
     SELECT di.split, di.image_id, di.annotation_id,
            i.filename, i.width, i.height,
-           a.bbox_x, a.bbox_y, a.bbox_w, a.bbox_h
+           a.bbox_x, a.bbox_y, a.bbox_w, a.bbox_h,
+           COALESCE(m.name, 'implant') as class_name
     FROM dataset_images di
-    JOIN images i      ON i.id = di.image_id
-    JOIN annotations a ON a.id = di.annotation_id
+    JOIN images i           ON i.id = di.image_id
+    JOIN annotations a      ON a.id = di.annotation_id
+    LEFT JOIN manufacturers m ON m.id = a.manufacturer_id
     WHERE di.dataset_id = ?
   `).all(dataset_id)
+
+  // Monta mapeamento de classes (ordem alfabética → reproduzível)
+  const classSet = [...new Set(items.map(i => i.class_name))].sort()
+  const classMap = Object.fromEntries(classSet.map((n, i) => [n, i]))
+  setProgress(job.id, 12, `Classes detectadas: ${classSet.join(', ')}`)
 
   setProgress(job.id, 15, `${items.length} itens para exportar`)
 
@@ -105,7 +113,10 @@ async function exportDataset(job) {
   for (const item of items) {
     const key = `${item.split}|${item.image_id}`
     if (!byImage[key]) byImage[key] = { ...item, boxes: [] }
-    byImage[key].boxes.push({ bbox_x: item.bbox_x, bbox_y: item.bbox_y, bbox_w: item.bbox_w, bbox_h: item.bbox_h })
+    byImage[key].boxes.push({
+      bbox_x: item.bbox_x, bbox_y: item.bbox_y, bbox_w: item.bbox_w, bbox_h: item.bbox_h,
+      class_name: item.class_name
+    })
   }
 
   let done = 0, total = Object.keys(byImage).length
@@ -119,11 +130,12 @@ async function exportDataset(job) {
     const imgDst = path.join(outDir, 'images', split, item.filename)
     if (fs.existsSync(src)) fs.copyFileSync(src, imgDst)
 
-    // Escreve label YOLO (class cx cy w h — classe 0 = implant)
+    // Escreve label YOLO multi-classe (class_id cx cy w h)
     const labelLines = item.boxes.map(b => {
+      const classId = classMap[b.class_name] ?? 0
       const cx = (b.bbox_x + b.bbox_w / 2).toFixed(6)
       const cy = (b.bbox_y + b.bbox_h / 2).toFixed(6)
-      return `0 ${cx} ${cy} ${b.bbox_w.toFixed(6)} ${b.bbox_h.toFixed(6)}`
+      return `${classId} ${cx} ${cy} ${b.bbox_w.toFixed(6)} ${b.bbox_h.toFixed(6)}`
     })
     fs.writeFileSync(path.join(outDir, 'labels', split, `${stem}.txt`), labelLines.join('\n'))
 
@@ -134,18 +146,28 @@ async function exportDataset(job) {
     }
   }
 
-  // data.yaml
+  // data.yaml com classes reais do dataset
+  const namesYaml = classSet.map((n, i) => `  ${i}: ${n}`).join('\n')
   const yaml = [
     `path: ${outDir}`,
     `train: images/train`,
-    `val: images/val`,
-    `test: images/test`,
+    `val:   images/val`,
+    `test:  images/test`,
     ``,
-    `nc: 1`,
-    `names: ['implant']`
+    `nc: ${classSet.length}`,
+    `names:`,
+    namesYaml
   ].join('\n')
   const yamlPath = path.join(outDir, 'data.yaml')
   fs.writeFileSync(yamlPath, yaml)
+
+  // classes.json — usado pelo inferenceService para mapear class_name → manufacturer_id
+  const classesJson = path.join(outDir, 'classes.json')
+  fs.writeFileSync(classesJson, JSON.stringify({ classes: classSet, map: classMap }, null, 2))
+
+  // Atualiza dataset com lista de classes no banco
+  db.prepare('UPDATE datasets SET class_names=?, updated_at=datetime(\'now\') WHERE id=?')
+    .run(JSON.stringify(classSet), dataset_id)
 
   // Atualiza dataset no banco
   db.prepare(`UPDATE datasets SET status='ready', export_path=?, updated_at=datetime('now') WHERE id=?`)

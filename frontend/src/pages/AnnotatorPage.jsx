@@ -354,29 +354,29 @@ export default function AnnotatorPage() {
         </button>
       </div>
 
-      {/* ── Área principal ── */}
-      <div className="flex gap-3 flex-1 min-h-0">
-
-        {/* Canvas — ocupa toda a largura no mobile */}
-        {/* Banner IA */}
-        {annotations.some(a => a.auto_detected === 1) && (
-          <div className="flex-shrink-0 bg-orange-500/10 border border-orange-500/30 rounded-lg px-3 py-2 flex items-start gap-2">
-            <span className="text-lg leading-none">🤖</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-orange-300">
-                {annotations.filter(a => a.auto_detected === 1).length} implante(s) detectado(s) automaticamente
-              </p>
-              <p className="text-xs text-orange-400/70 mt-0.5">
-                Revise as caixas tracejadas laranja, preencha fabricante e sistema, depois envie para revisão.
-              </p>
-            </div>
+      {/* ── Banner IA — acima do canvas, fora do flex row ── */}
+      {annotations.some(a => a.auto_detected === 1) && (
+        <div className="flex-shrink-0 bg-orange-500/10 border border-orange-500/30 rounded-lg px-3 py-2 flex items-start gap-2">
+          <span className="text-lg leading-none">🤖</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-orange-300">
+              {annotations.filter(a => a.auto_detected === 1).length} implante(s) detectado(s) automaticamente
+            </p>
+            <p className="text-xs text-orange-400/70 mt-0.5">
+              Revise as caixas tracejadas laranja, preencha fabricante e sistema, depois envie para revisão.
+            </p>
           </div>
-        )}
+        </div>
+      )}
+
+      {/* ── Área principal ── */}
+      {/* mobile: coluna | desktop lg+: linha */}
+      <div className="flex flex-col lg:flex-row gap-3 flex-1 min-h-0 overflow-hidden">
 
         <div
           ref={containerRef}
-          className="flex-1 card overflow-auto bg-gray-950 min-w-0"
-          style={{ WebkitOverflowScrolling: 'touch' }}
+          className="w-full lg:flex-1 card overflow-auto bg-gray-950 min-w-0 min-h-0"
+          style={{ WebkitOverflowScrolling: 'touch', maxHeight: 'min(70vh, 9999px)' }}
         >
           {!imgLoaded && (
             <div className="flex flex-col items-center justify-center h-full min-h-48 gap-3">
@@ -389,8 +389,9 @@ export default function AnnotatorPage() {
             className="touch-none block"
             style={{
               display: imgLoaded ? 'block' : 'none',
-              width: '100%',        /* escala para caber na tela */
+              width: '100%',
               height: 'auto',
+              maxWidth: '100%',
               cursor: 'crosshair',
             }}
             onMouseDown={onMouseDown}
