@@ -99,6 +99,11 @@ router.patch('/:id', requireAuth, requireRole('admin'), (req, res) => {
 });
 
 // POST /api/models/:id/deploy — marca como deployed
+// POST /api/models/upload — recebe modelo .pt treinado externamente (ex: Colab)
+router.post('/upload', requireAuth, requireRole('admin'), modelUpload.single('model'), (req, res) => {
+  const { name, architecture, epochs, map50, map95, precision, recall, notes } = req.body;
+  if (!name) return res.status(400).json({ error: 'name obrigatório.' });
+
 router.post('/:id/deploy', requireAuth, requireRole('admin'), (req, res) => {
   const model = db.prepare('SELECT * FROM ml_models WHERE id = ?').get(req.params.id);
   if (!model) return res.status(404).json({ error: 'Modelo não encontrado.' });
@@ -198,10 +203,6 @@ router.get('/jobs/list', requireAuth, (req, res) => {
 
 
 
-// POST /api/models/upload — recebe modelo .pt treinado externamente (ex: Colab)
-router.post('/upload', requireAuth, requireRole('admin'), modelUpload.single('model'), (req, res) => {
-  const { name, architecture, epochs, map50, map95, precision, recall, notes } = req.body;
-  if (!name) return res.status(400).json({ error: 'name obrigatório.' });
 
   // O arquivo vem via multipart (mesmo middleware de imagens)
   if (!req.file) return res.status(400).json({ error: 'Arquivo .pt não recebido.' });
