@@ -395,13 +395,13 @@ function ReportDrawer({ modelId, onClose }) {
       <div className="p-4">
         {loading ? (
           <div className="flex justify-center py-8"><Spinner/></div>
+        ) : tab === 'live' ? (
+          <LiveLogPanel/>
         ) : !job ? (
           <div className="flex flex-col items-center gap-2 py-8 text-gray-600">
             <AlertCircle size={20}/>
             <p className="text-sm">Nenhum job de treino encontrado para este modelo</p>
           </div>
-        ) : tab === 'live' ? (
-          <LiveLogPanel/>
         ) : tab === 'progress' ? (
           <div className="space-y-5">
             {/* Progress bar grande */}
