@@ -118,7 +118,7 @@ router.get('/jobs/list', requireAuth, (req, res) => {
 router.patch('/jobs/:jobId/progress', requireAuth, requireRole('admin'), (req, res) => {
   const { progress, log_line, status } = req.body;
   const job = db.prepare('SELECT id FROM jobs WHERE id = ?').get(req.params.jobId);
-  if (!job) return res.status(404).json({ error: 'Job não encontrado.' });
+  if (!job) return res.json(null);  // Modelo importado externamente — sem job de treino
 
   const fields = [];
   const vals   = [];
@@ -198,7 +198,7 @@ router.get('/:id/job', requireAuth, (req, res) => {
     WHERE j.type = 'train_model' AND j.payload LIKE ?
     ORDER BY j.created_at DESC LIMIT 1
   `).get(`%${req.params.id}%`);
-  if (!job) return res.status(404).json({ error: 'Job não encontrado.' });
+  if (!job) return res.json(null);  // Modelo importado externamente — sem job de treino
   if (job.result)  try { job.result  = JSON.parse(job.result);  } catch {}
   if (job.payload) try { job.payload = JSON.parse(job.payload); } catch {}
   res.json(job);

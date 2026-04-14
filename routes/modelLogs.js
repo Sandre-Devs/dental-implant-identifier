@@ -3,11 +3,14 @@
 // Montado ANTES de routes/models para evitar conflito com /:id
 
 const express         = require('express');
+const path            = require('path');
 const router          = express.Router();
 const detectionLogger = require('../utils/detectionLogger');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const db              = require('../database/db');
 const { detectAndSave } = require('../services/inferenceService');
+
+const UPLOADS_DIR = path.resolve(__dirname, '../uploads');
 
 // GET /api/models/logs/stream — SSE em tempo real
 // EventSource do browser não suporta headers, então aceitamos token via query param
@@ -73,8 +76,8 @@ router.post('/rerun/:imageId', requireAuth, requireRole('admin'), async (req, re
     db.prepare("UPDATE images SET status = 'pending', updated_at = datetime('now') WHERE id = ?")
       .run(imageId);
 
-    // Roda detecção em background
-    const imagePath = image.filepath || image.path;
+    // Construir caminho real do arquivo (coluna 'filename' + pasta uploads)
+    const imagePath = path.join(UPLOADS_DIR, image.filename);
     detectAndSave({ imageId, imagePath, uploadedBy: req.user.id })
       .then(result => {
         detectionLogger.success('✅ Redetecção concluída', {
