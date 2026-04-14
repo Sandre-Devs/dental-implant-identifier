@@ -95,9 +95,14 @@ router.post('/upload', requireAuth,
       db.prepare(`
         INSERT INTO images (id,filename,original_name,mime_type,size,width,height,type,uploaded_by)
         VALUES (?,?,?,?,?,?,?,?,?)
-      `).run(id, file.filename, file.originalname, file.mimetype, file.size, width, height, type, req.user.id);
+      // Gerar hash anônimo — nunca persistir nome do paciente
+      const _ext      = require('path').extname(file.originalname).toLowerCase() || '.jpg';
+      const _anonName = require('crypto').createHash('sha256')
+                          .update(id + file.originalname + Date.now().toString())
+                          .digest('hex').slice(0, 12) + _ext;
+      `).run(id, file.filename, _anonName, file.mimetype, file.size, width, height, type, req.user.id);
 
-      inserted.push({ id, filename: file.filename, original_name: file.originalname, width, height, type });
+      inserted.push({ id, filename: file.filename, original_name: _anonName, width, height, type });
     }
 
     // Responde imediatamente — detecção roda em background
