@@ -223,7 +223,7 @@ router.get('/:id/logs', requireAuth, (req, res) => {
     WHERE j.type = 'train_model' AND j.payload LIKE ?
     ORDER BY j.created_at DESC LIMIT 1
   `).get(`%${req.params.id}%`);
-  if (!row) return res.status(404).json({ log: '', progress: 0, status: 'unknown' });
+  if (!row) return res.json({ log: '', progress: 0, status: 'none' });  // Sem job — resposta vazia
   res.json({ log: row.log_output || '', progress: row.progress || 0, status: row.status });
 });
 

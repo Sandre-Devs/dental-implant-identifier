@@ -315,15 +315,31 @@ function ReportDrawer({ modelId, onClose }) {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [jobRes, logRes] = await Promise.all([
-        api.get(`/models/${modelId}/job`),
-        api.get(`/models/${modelId}/logs`)
-      ])
-      setJob(jobRes.data)
-      const lines = (logRes.data.log || '').split('\n').filter(Boolean)
-      setLogLines(lines)
+      const jobRes = await api.get(`/models/${modelId}/job`)
+      const jobData = jobRes.data
+      setJob(jobData)
+
+      // Só busca logs se há job de treino
+      if (jobData) {
+        const logRes = await api.get(`/models/${modelId}/logs`)
+        const lines = (logRes.data.log || '').split('\n').filter(Boolean)
+        setLogLines(lines)
+
+        // Para o polling quando o job terminar
+        const done = ['completed','failed','error'].includes(jobData.status)
+        if (done && pollRef.current) {
+          clearInterval(pollRef.current)
+          pollRef.current = null
+        }
+      } else {
+        // Modelo importado externamente — sem job, para o polling
+        if (pollRef.current) {
+          clearInterval(pollRef.current)
+          pollRef.current = null
+        }
+      }
     } catch(e) {
-      // job pode não existir ainda
+      // silencioso — evita toast em erros transitórios
     } finally { setLoading(false) }
   }, [modelId])
 
