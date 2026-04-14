@@ -662,10 +662,11 @@ export default function ModelsPage() {
           />
         </Modal>
       )}
-  
   )
 }
-/* ── Modal de importação de modelo .pt ─────────────────────── */
+  
+
+    {/* ── Modal de importação de modelo .pt ─────────────────────── */}
 function UploadModelForm({ onSubmit, loading, onCancel }) {
   const [file,   setFile]   = useState(null)
   const [name,   setName]   = useState('')
