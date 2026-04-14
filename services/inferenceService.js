@@ -4,6 +4,11 @@
  * Se nenhum modelo estiver deployed, retorna detecções vazias graciosamente.
  */
 const { spawn } = require('child_process')
+
+const PYTHON = (() => {
+  const venv = require('path').resolve(__dirname, '../venv-ml/bin/python3')
+  return require('fs').existsSync(venv) ? venv : 'python3'
+})()
 const path      = require('path')
 const fs        = require('fs')
 const { v4: uuidv4 } = require('uuid')
@@ -24,7 +29,7 @@ function getDeployedModel() {
 function runYolo(imagePath, modelPath, conf = 0.25) {
   return new Promise((resolve, reject) => {
     const script = path.resolve(__dirname, '../scripts/detect.py')
-    const proc = spawn('python3', [script, imagePath, modelPath, String(conf)])
+    const proc = spawn(PYTHON, [script, imagePath, modelPath, String(conf)])
     let out = '', err = ''
     proc.stdout.on('data', d => out += d)
     proc.stderr.on('data', d => err += d)

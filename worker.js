@@ -9,6 +9,14 @@
 const path   = require('path')
 const fs     = require('fs')
 const { spawn } = require('child_process')
+
+// Python com ultralytics instalado (venv-ml)
+// Fallback para python3 global se o venv não existir
+const PYTHON = (() => {
+  const venv = require('path').resolve(__dirname, 'venv-ml/bin/python3')
+  return require('fs').existsSync(venv) ? venv : 'python3'
+})()
+
 const { v4: uuidv4 } = require('uuid')
 const db     = require('./database/db')
 
@@ -215,7 +223,7 @@ print("DONE")
 
     setProgress(job.id, 2, `Script de treino gerado, iniciando Python...`)
 
-    const proc = spawn('python3', [trainScript], { cwd: runDir })
+    const proc = spawn(PYTHON, [trainScript], { cwd: runDir })
     let epochsDone = 0
 
     proc.stdout.on('data', chunk => {
