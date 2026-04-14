@@ -8,21 +8,28 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload, handleUploadError } = require('../middleware/upload');
 const { detectAndSave }  = require('../services/inferenceService');
 
-// GET /api/images — lista com filtros
+// GET /api/images — lista com filtros + controle por role
 router.get('/', requireAuth, (req, res) => {
   const { status, type, page = 1, limit = 20 } = req.query;
   const offset = (page - 1) * limit;
+  const user   = req.user;
 
-  let where = [];
+  let where  = [];
   let params = [];
 
   if (status) { where.push('i.status = ?'); params.push(status); }
   if (type)   { where.push('i.type = ?');   params.push(type); }
 
+  // Admin vê tudo; demais roles veem apenas imagens de usuários da mesma role
+  if (user.role !== 'admin') {
+    where.push(`u.role = ?`);
+    params.push(user.role);
+  }
+
   const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
-  const images = db.prepare(`
-    SELECT i.*, u.name as uploader_name,
+  const rows = db.prepare(`
+    SELECT i.*, u.name as uploader_name, u.role as uploader_role,
       (SELECT COUNT(*) FROM annotations a WHERE a.image_id = i.id) as annotation_count
     FROM images i
     LEFT JOIN users u ON u.id = i.uploaded_by
@@ -31,8 +38,15 @@ router.get('/', requireAuth, (req, res) => {
     LIMIT ? OFFSET ?
   `).all(...params, +limit, +offset);
 
-  const total = db.prepare(`SELECT COUNT(*) as c FROM images i ${whereClause}`)
-    .get(...params).c;
+  // Remove extensão do nome exibido
+  const stripExt = name => name ? name.replace(/\.[^.]+$/, '') : name;
+  const images = rows.map(img => ({ ...img, original_name: stripExt(img.original_name) }));
+
+  const total = db.prepare(`
+    SELECT COUNT(*) as c FROM images i
+    LEFT JOIN users u ON u.id = i.uploaded_by
+    ${whereClause}
+  `).get(...params).c;
 
   res.json({ images, total, page: +page, limit: +limit, pages: Math.ceil(total / limit) });
 });
@@ -102,7 +116,7 @@ router.post('/upload', requireAuth,
                           .digest('hex').slice(0, 12) + _ext;
       `).run(id, file.filename, _anonName, file.mimetype, file.size, width, height, type, req.user.id);
 
-      inserted.push({ id, filename: file.filename, original_name: _anonName, width, height, type });
+      inserted.push({ id, filename: file.filename, original_name: _anonName.replace(/\.[^.]+$/, ''), width, height, type });
     }
 
     // Responde imediatamente — detecção roda em background
@@ -132,19 +146,34 @@ router.post('/upload', requireAuth,
 // GET /api/images/:id
 router.get('/:id', requireAuth, (req, res) => {
   const image = db.prepare(`
-    SELECT i.*, u.name as uploader_name
+    SELECT i.*, u.name as uploader_name, u.role as uploader_role
     FROM images i
     LEFT JOIN users u ON u.id = i.uploaded_by
     WHERE i.id = ?
   `).get(req.params.id);
   if (!image) return res.status(404).json({ error: 'Imagem não encontrada.' });
+
+  // Controle de acesso: não-admin só acessa imagens da mesma role
+  if (req.user.role !== 'admin' && image.uploader_role !== req.user.role)
+    return res.status(403).json({ error: 'Acesso negado.' });
+
+  // Remove extensão do nome exibido
+  image.original_name = image.original_name?.replace(/\.[^.]+$/, '') || image.original_name;
   res.json(image);
 });
 
 // GET /api/images/:id/file — serve o arquivo físico
 router.get('/:id/file', requireAuth, (req, res) => {
-  const image = db.prepare('SELECT filename, mime_type FROM images WHERE id = ?').get(req.params.id);
+  const image = db.prepare(`
+    SELECT i.filename, i.mime_type, u.role as uploader_role
+    FROM images i LEFT JOIN users u ON u.id = i.uploaded_by
+    WHERE i.id = ?
+  `).get(req.params.id);
   if (!image) return res.status(404).json({ error: 'Imagem não encontrada.' });
+
+  // Controle de acesso por role
+  if (req.user.role !== 'admin' && image.uploader_role !== req.user.role)
+    return res.status(403).json({ error: 'Acesso negado.' });
 
   const filePath = path.resolve(__dirname, '../uploads', image.filename);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Arquivo não encontrado no disco.' });
