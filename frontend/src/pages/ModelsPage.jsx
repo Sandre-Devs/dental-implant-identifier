@@ -355,9 +355,11 @@ export default function ModelsPage() {
   const [models,     setModels]     = useState([])
   const [datasets,   setDatasets]   = useState([])
   const [loading,    setLoading]    = useState(true)
-  const [modal,      setModal]      = useState(false)
-  const [saving,     setSaving]     = useState(false)
-  const [selectedId, setSelectedId] = useState(null)
+  const [modal,       setModal]       = useState(false)
+  const [uploadModal, setUploadModal] = useState(false)
+  const [saving,      setSaving]      = useState(false)
+  const [uploading,   setUploading]   = useState(false)
+  const [selectedId,  setSelectedId]  = useState(null)
   const [form, setForm] = useState({
     name: '', dataset_id: '', architecture: 'yolov8m', epochs: 100, notes: ''
   })
