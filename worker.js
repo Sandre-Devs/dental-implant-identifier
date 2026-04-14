@@ -46,8 +46,13 @@ function setJobFailed(jobId, error) {
 }
 
 function setProgress(jobId, progress, logLine = null) {
-  const fields = ['progress = ?']
-  const vals   = [Math.min(100, Math.max(0, progress))]
+  const fields = []
+  const vals   = []
+  // Só atualiza progress se for um número válido
+  if (progress != null) {
+    fields.push('progress = ?')
+    vals.push(Math.min(100, Math.max(0, progress)))
+  }
   if (logLine) {
     const current = db.prepare('SELECT log_output FROM jobs WHERE id=?').get(jobId)
     const lines   = (current?.log_output || '').split('\n')
@@ -56,11 +61,12 @@ function setProgress(jobId, progress, logLine = null) {
     fields.push('log_output = ?')
     vals.push(trimmed)
   }
+  if (fields.length === 0) return
   db.prepare(`UPDATE jobs SET ${fields.join(', ')} WHERE id=?`).run(...vals, jobId)
 }
 
 function appendLog(jobId, line) {
-  setProgress(jobId, null, line)
+  setProgress(jobId, null, line)  // progress=null => só appenda log, não zera progresso
 }
 
 // ─────────────────────────────────────────────────

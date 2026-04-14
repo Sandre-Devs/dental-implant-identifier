@@ -194,24 +194,37 @@ function ReportDrawer({ modelId, onClose }) {
   const [loading,  setLoading]  = useState(true)
   const pollRef = useRef(null)
 
-  const fetch = useCallback(async () => {
+  const consoleRef = useRef(null)
+
+  const fetchAll = useCallback(async () => {
     try {
       const [jobRes, logRes] = await Promise.all([
         api.get(`/models/${modelId}/job`),
         api.get(`/models/${modelId}/logs`)
       ])
       setJob(jobRes.data)
-      setLogLines((logRes.data.log || '').split('\n').filter(Boolean))
+      const lines = (logRes.data.log || '').split('\n').filter(Boolean)
+      setLogLines(lines)
     } catch(e) {
       // job pode não existir ainda
     } finally { setLoading(false) }
   }, [modelId])
 
+  // Scroll automático no console quando chegam novos logs
   useEffect(() => {
-    fetch()
-    pollRef.current = setInterval(fetch, POLL_MS)
+    if (consoleRef.current) {
+      consoleRef.current.scrollTop = consoleRef.current.scrollHeight
+    }
+  }, [logLines])
+
+  useEffect(() => {
+    fetchAll()
+    pollRef.current = setInterval(fetchAll, POLL_MS)
     return () => clearInterval(pollRef.current)
-  }, [fetch])
+  }, [fetchAll])
+
+  // Alias para compatibilidade com botão manual
+  const fetch = fetchAll
 
   const isRunning = job?.status === 'running' || job?.status === 'queued'
 

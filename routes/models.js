@@ -98,16 +98,30 @@ res.json({ message: 'Modelo deployado com sucesso.' });
 
 // GET /api/models/:id/job — retorna job de treino + progress do modelo
 router.get('/:id/job', requireAuth, (req, res) => {
+  // Busca o job mais recente de train_model para este modelo
+  // Usa LIKE no payload para evitar dependência de json_extract (compatibilidade SQLite)
   const job = db.prepare(`
     SELECT j.* FROM jobs j
     WHERE j.type = 'train_model'
-      AND json_extract(j.payload, '$.model_id') = ?
+      AND j.payload LIKE ?
     ORDER BY j.created_at DESC LIMIT 1
-  `).get(req.params.id);
+  `).get(`%${req.params.id}%`);
   if (!job) return res.status(404).json({ error: 'Job não encontrado.' });
   if (job.result)  try { job.result  = JSON.parse(job.result)  } catch {}
   if (job.payload) try { job.payload = JSON.parse(job.payload) } catch {}
   res.json(job);
+});
+
+// GET /api/models/:id/status — endpoint leve só para polling de progress (sem log_output)
+router.get('/:id/status', requireAuth, (req, res) => {
+  const row = db.prepare(`
+    SELECT j.id, j.status, j.progress, j.started_at, j.completed_at
+    FROM jobs j
+    WHERE j.type = 'train_model' AND j.payload LIKE ?
+    ORDER BY j.created_at DESC LIMIT 1
+  `).get(`%${req.params.id}%`);
+  if (!row) return res.status(404).json({ progress: 0, status: 'unknown' });
+  res.json(row);
 });
 
 // GET /api/models/:id/logs — retorna log_output do job de treino
@@ -115,9 +129,9 @@ router.get('/:id/logs', requireAuth, (req, res) => {
   const row = db.prepare(`
     SELECT j.log_output, j.progress, j.status FROM jobs j
     WHERE j.type = 'train_model'
-      AND json_extract(j.payload, '$.model_id') = ?
+      AND j.payload LIKE ?
     ORDER BY j.created_at DESC LIMIT 1
-  `).get(req.params.id);
+  `).get(`%${req.params.id}%`);
   if (!row) return res.status(404).json({ log: '', progress: 0, status: 'unknown' });
   res.json({ log: row.log_output || '', progress: row.progress || 0, status: row.status });
 });
