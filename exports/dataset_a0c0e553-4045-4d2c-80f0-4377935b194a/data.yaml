@@ -1,7 +1,0 @@
-path: /var/www/vhosts/sandre.dev/httpdocs/dii/exports/dataset_a0c0e553-4045-4d2c-80f0-4377935b194a
-train: images/train
-val: images/val
-test: images/test
-
-nc: 1
-names: ['implant']

@@ -80,17 +80,11 @@ export default function AnnotatorPage() {
     if (!window.confirm('Isso vai remover as anotações automáticas existentes e rodar o modelo novamente. Continuar?')) return
     setRedetecting(true)
     try {
-      const token = localStorage.getItem('token') || ''
-      const res = await fetch(`/api/models/rerun/${id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Erro na redetecção')
+      await api.post(`/models/rerun/${id}`)
       toast.success('Redetecção iniciada! Acompanhe em Modelos → Ao Vivo.')
       setTimeout(() => { load() }, 3500)
     } catch (err) {
-      toast.error(`Erro: ${err.message}`)
+      toast.error(`Erro: ${err.response?.data?.error || err.message}`)
     } finally {
       setRedetecting(false)
     }

@@ -25,3 +25,8 @@ public/*
 # Sistema operacional
 .DS_Store
 Thumbs.db
+# Arquivos grandes — modelos treinados e exports
+exports/
+models/
+*.pt
+*.weights

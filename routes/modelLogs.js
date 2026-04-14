@@ -10,12 +10,29 @@ const db              = require('../database/db');
 const { detectAndSave } = require('../services/inferenceService');
 
 // GET /api/models/logs/stream — SSE em tempo real
-router.get('/logs/stream', requireAuth, (req, res) => {
+// EventSource do browser não suporta headers, então aceitamos token via query param
+router.get('/logs/stream', (req, res) => {
+  const jwt = require('jsonwebtoken');
+  const db  = require('../database/db');
+  const JWT_SECRET = process.env.JWT_SECRET || 'change-this-in-production';
+
+  // Aceita token via Authorization header OU query param ?token=
+  const header = req.headers.authorization || '';
+  const raw    = header.startsWith('Bearer ') ? header.slice(7) : (req.query.token || null);
+
+  if (!raw) return res.status(401).json({ error: 'Token não fornecido.' });
+
+  let user;
+  try {
+    const payload = jwt.verify(raw, JWT_SECRET);
+    user = db.prepare('SELECT id, name, role, active FROM users WHERE id = ?').get(payload.sub);
+    if (!user || !user.active) return res.status(401).json({ error: 'Usuário inativo.' });
+  } catch {
+    return res.status(401).json({ error: 'Token inválido.' });
+  }
+
   detectionLogger.addClient(res);
-  detectionLogger.info('Cliente conectado ao stream de logs', {
-    userId: req.user?.id,
-    ip:     req.ip
-  });
+  detectionLogger.info('Cliente conectado ao stream de logs', { userId: user.id, ip: req.ip });
 });
 
 // GET /api/models/logs — histórico recente

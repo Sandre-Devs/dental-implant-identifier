@@ -212,10 +212,11 @@ function LiveLogPanel() {
   const [filter,     setFilter]     = useState('all')
   const [autoScroll, setAutoScroll] = useState(true)
   const bottomRef = useRef(null)
-  const token = localStorage.getItem('token') || sessionStorage.getItem('token') || ''
+  const token = localStorage.getItem('dii_token') || ''
 
   useEffect(() => {
-    const es = new EventSource(`/api/models/logs/stream?token=${encodeURIComponent(token)}`)
+    const esToken = localStorage.getItem('dii_token') || ''
+    const es = new EventSource(`/api/models/logs/stream?token=${encodeURIComponent(esToken)}`)
     es.onopen    = () => setConnected(true)
     es.onerror   = () => { setConnected(false); es.close() }
     es.onmessage = (e) => {
@@ -233,7 +234,7 @@ function LiveLogPanel() {
   }, [logs, autoScroll])
 
   const clearLogs = async () => {
-    await fetch('/api/models/logs', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+    await fetch('/api/models/logs', { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('dii_token') || ''}` } })
     setLogs([])
   }
 
