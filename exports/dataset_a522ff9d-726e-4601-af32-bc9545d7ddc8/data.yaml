@@ -1,0 +1,11 @@
+# DII Bootstrap Dataset
+path: /var/www/vhosts/sandre.dev/httpdocs/dii/exports/dataset_a522ff9d-726e-4601-af32-bc9545d7ddc8
+train: images/train
+val:   images/val
+test:  images/test
+
+nc: 3
+names:
+  0: Bego
+  1: Bicon
+  2: ITI

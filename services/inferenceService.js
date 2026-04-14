@@ -12,7 +12,8 @@ const PYTHON = (() => {
 const path      = require('path')
 const fs        = require('fs')
 const { v4: uuidv4 } = require('uuid')
-const db        = require('../database/db')
+const db              = require('../database/db')
+const detectionLogger = require('../utils/detectionLogger')
 
 /** Retorna o modelo deployed ou null */
 function getDeployedModel() {
@@ -31,10 +32,18 @@ function runYolo(imagePath, modelPath, conf = 0.25) {
     const script = path.resolve(__dirname, '../scripts/detect.py')
     const proc = spawn(PYTHON, [script, imagePath, modelPath, String(conf)])
     let out = '', err = ''
-    proc.stdout.on('data', d => out += d)
-    proc.stderr.on('data', d => err += d)
+    proc.stdout.on('data', d => { out += d })
+    proc.stderr.on('data', d => {
+      err += d
+      d.toString().split('\n').filter(Boolean).forEach(line =>
+        detectionLogger.debug(`[Python] ${line.trim()}`)
+      )
+    })
     proc.on('close', code => {
-      if (code !== 0) return reject(new Error(`detect.py falhou: ${err}`))
+      if (code !== 0) {
+        detectionLogger.error(`detect.py falhou (código ${code})`, { stderr: err.slice(0, 500) })
+        return reject(new Error(`detect.py falhou: ${err}`))
+      }
       try { resolve(JSON.parse(out)) }
       catch(e) { reject(new Error(`JSON inválido: ${out}`)) }
     })
@@ -55,20 +64,25 @@ async function detectAndSave({ imageId, imagePath, uploadedBy }) {
   const model = getDeployedModel()
 
   if (!model || !model.model_path) {
-    // Nenhum modelo deployed — imagem fica pending, sem anotações automáticas
+    detectionLogger.warn('Nenhum modelo deployed — detecção ignorada', { imageId })
     return { detected: 0, model_id: null, skipped: true }
   }
 
   if (!fs.existsSync(model.model_path)) {
-    console.warn(`[inference] model_path não encontrado: ${model.model_path}`)
+    detectionLogger.error('model_path não encontrado no disco', { path: model.model_path, modelId: model.id })
     return { detected: 0, model_id: model.id, skipped: true }
   }
 
+  detectionLogger.info(`Modelo carregado: ${model.name}`, { modelId: model.id, path: model.model_path })
+
+  detectionLogger.info('Executando YOLOv8...', { imageId, imagePath })
   let detections = []
+  const t0 = Date.now()
   try {
     detections = await runYolo(imagePath, model.model_path)
+    detectionLogger.success(`YOLOv8 concluído em ${Date.now()-t0}ms — ${detections.length} detecção(ões)`, { imageId })
   } catch (e) {
-    console.error('[inference] Erro no YOLOv8:', e.message)
+    detectionLogger.error(`Erro no YOLOv8: ${e.message}`, { imageId })
     return { detected: 0, model_id: model.id, skipped: true }
   }
 
@@ -105,6 +119,7 @@ async function detectAndSave({ imageId, imagePath, uploadedBy }) {
     VALUES (?,?,?,?,datetime('now'))
   `).run(uuidv4(), imageId, model.id, JSON.stringify(detections))
 
+  detectionLogger.success('✅ Pipeline concluído', { imageId, detected: detections.length })
   return { detected: detections.length, model_id: model.id, skipped: false }
 }
 

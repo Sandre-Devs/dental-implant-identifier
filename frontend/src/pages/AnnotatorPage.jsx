@@ -5,7 +5,7 @@ import Badge from '../components/ui/Badge'
 import Spinner from '../components/ui/Spinner'
 import Modal from '../components/ui/Modal'
 import toast from 'react-hot-toast'
-import { ArrowLeft, Save, Trash2, Plus, Loader2, List, ChevronDown, ChevronUp, CheckCircle, XCircle, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Save, Trash2, Plus, Loader2, List, ChevronDown, ChevronUp, CheckCircle, XCircle, MessageSquare, RefreshCw } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 
 const COLORS = ['#01696f','#3b82f6','#a855f7','#f59e0b','#ef4444','#10b981','#f97316','#06b6d4']
@@ -36,6 +36,7 @@ export default function AnnotatorPage() {
   const [listOpen, setListOpen]       = useState(false)
   const [formOpen, setFormOpen]       = useState(false)
   const [panelOpen, setPanelOpen]     = useState(false) // accordion desktop
+  const [redetecting, setRedetecting] = useState(false)
   const [form, setForm] = useState({
     manufacturer_id:'', system_id:'', confidence:'low',
     position_fdi:'', diameter_mm:'', length_mm:'',
@@ -73,6 +74,27 @@ export default function AnnotatorPage() {
       api.get(`/manufacturers/${form.manufacturer_id}/systems`).then(r => setSystems(r.data))
     else setSystems([])
   }, [form.manufacturer_id])
+
+  /* ─── Redetecção manual ─────────────────────────── */
+  const handleRedetect = async () => {
+    if (!window.confirm('Isso vai remover as anotações automáticas existentes e rodar o modelo novamente. Continuar?')) return
+    setRedetecting(true)
+    try {
+      const token = localStorage.getItem('token') || ''
+      const res = await fetch(`/api/models/rerun/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Erro na redetecção')
+      toast.success('Redetecção iniciada! Acompanhe em Modelos → Ao Vivo.')
+      setTimeout(() => { load() }, 3500)
+    } catch (err) {
+      toast.error(`Erro: ${err.message}`)
+    } finally {
+      setRedetecting(false)
+    }
+  }
 
   /* ─── Draw ─────────────────────────────────────── */
   const drawAll = useCallback(() => {
@@ -328,6 +350,14 @@ export default function AnnotatorPage() {
             <Save size={13}/> Enviar ({draftCount})
           </button>
         )}
+        <button
+          onClick={handleRedetect}
+          disabled={redetecting}
+          className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 text-primary-400 hover:text-primary-300 border border-primary-500/30 hover:border-primary-500/60 rounded-lg"
+          title="Reexecutar detecção automática com o modelo ativo">
+          <RefreshCw size={13} className={redetecting ? 'animate-spin' : ''}/>
+          {redetecting ? 'Detectando...' : 'Redetectar'}
+        </button>
       </div>
 
       {/* ── Área principal ── */}

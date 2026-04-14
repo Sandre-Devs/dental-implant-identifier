@@ -8,7 +8,7 @@ import toast from 'react-hot-toast'
 import {
   BrainCircuit, Plus, Rocket, Loader2, CheckCircle2,
   Terminal, BarChart3, ChevronRight, RefreshCw,
-  Cpu, Archive, AlertCircle, Zap, Trash2, Upload, FileUp
+  Cpu, Archive, AlertCircle, Zap, Trash2, Upload, FileUp, Activity, Wifi, WifiOff
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -204,6 +204,104 @@ function ModelCard({ model, onDeploy, onUndeploy, onDelete, onRedeploy, onSelect
   )
 }
 
+
+/* ── Painel de logs ao vivo (SSE) ────────────────── */
+function LiveLogPanel() {
+  const [logs,       setLogs]       = useState([])
+  const [connected,  setConnected]  = useState(false)
+  const [filter,     setFilter]     = useState('all')
+  const [autoScroll, setAutoScroll] = useState(true)
+  const bottomRef = useRef(null)
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token') || ''
+
+  useEffect(() => {
+    const es = new EventSource(`/api/models/logs/stream?token=${encodeURIComponent(token)}`)
+    es.onopen    = () => setConnected(true)
+    es.onerror   = () => { setConnected(false); es.close() }
+    es.onmessage = (e) => {
+      try {
+        const entry = JSON.parse(e.data)
+        if (entry.type === 'clear') { setLogs([]); return }
+        setLogs(prev => [...prev.slice(-399), entry])
+      } catch {}
+    }
+    return () => es.close()
+  }, [])
+
+  useEffect(() => {
+    if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [logs, autoScroll])
+
+  const clearLogs = async () => {
+    await fetch('/api/models/logs', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+    setLogs([])
+  }
+
+  const LEVELS = ['all','info','success','warn','error','debug']
+  const visible = filter === 'all' ? logs : logs.filter(l => l.level === filter)
+
+  const levelColor = { info:'text-blue-400', success:'text-green-400', warn:'text-yellow-400', error:'text-red-400', debug:'text-purple-400' }
+  const levelBg    = { info:'bg-blue-500/10 text-blue-400', success:'bg-green-500/10 text-green-400', warn:'bg-yellow-500/10 text-yellow-400', error:'bg-red-500/10 text-red-400', debug:'bg-purple-500/10 text-purple-400' }
+
+  return (
+    <div className="flex flex-col h-96 bg-gray-900 rounded-xl border border-gray-700 overflow-hidden font-mono text-xs">
+      <div className="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          {connected
+            ? <><Wifi size={12} className="text-green-400"/><span className="text-green-400 font-sans">Conectado</span></>
+            : <><WifiOff size={12} className="text-gray-500"/><span className="text-gray-500 font-sans">Desconectado</span></>
+          }
+          <span className="text-gray-600">·</span>
+          <span className="text-gray-500 font-sans">{logs.length} entradas</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1 text-gray-500 cursor-pointer font-sans text-xs">
+            <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} className="w-3 h-3"/>
+            scroll
+          </label>
+          <button onClick={clearLogs} className="text-gray-600 hover:text-red-400 transition-colors p-1" title="Limpar logs">
+            <Trash2 size={12}/>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-1 px-3 py-1.5 bg-gray-900/80 border-b border-gray-800 flex-shrink-0 overflow-x-auto">
+        {LEVELS.map(l => (
+          <button key={l} onClick={() => setFilter(l)}
+            className={clsx('px-2 py-0.5 rounded-full border text-xs font-sans capitalize transition-colors',
+              filter === l ? 'bg-primary-500 border-transparent text-white' : 'border-gray-700 text-gray-500 hover:border-gray-500'
+            )}>
+            {l === 'all' ? 'Todos' : l}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+        {visible.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-gray-700 gap-2 font-sans">
+            <Activity size={20}/>
+            <p className="text-sm">Aguardando eventos de detecção...</p>
+          </div>
+        ) : visible.map(entry => (
+          <div key={entry.id} className="flex items-baseline gap-2 px-1 hover:bg-gray-800/50 rounded py-px">
+            <span className="text-gray-700 flex-shrink-0 text-[10px]">
+              {new Date(entry.timestamp).toLocaleTimeString('pt-BR', { hour12: false })}
+            </span>
+            <span className={clsx('text-[9px] font-bold uppercase px-1 rounded flex-shrink-0', levelBg[entry.level] || levelBg.info)}>
+              {entry.level}
+            </span>
+            <span className={clsx(levelColor[entry.level] || 'text-gray-400', 'break-all')}>{entry.message}</span>
+            {entry.meta && Object.keys(entry.meta).length > 0 && (
+              <span className="text-gray-700 text-[10px] break-all">{JSON.stringify(entry.meta)}</span>
+            )}
+          </div>
+        ))}
+        <div ref={bottomRef}/>
+      </div>
+    </div>
+  )
+}
+
 /* ── Report drawer ───────────────────────────────── */
 function ReportDrawer({ modelId, onClose }) {
   const [tab,      setTab]      = useState('progress')
@@ -270,6 +368,15 @@ function ReportDrawer({ modelId, onClose }) {
               <span className="bg-gray-700 text-gray-400 text-xs px-1.5 rounded-full">{logLines.length}</span>
             )}
           </button>
+          <button
+            className={clsx('text-xs px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5',
+              tab === 'live' ? 'bg-green-500/20 text-green-300' : 'text-gray-400 hover:text-gray-200'
+            )}
+            onClick={() => setTab('live')}
+          >
+            <Activity size={12}/> Ao Vivo
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"/>
+          </button>
         </div>
         <div className="flex items-center gap-2">
           {isRunning && (
@@ -292,6 +399,8 @@ function ReportDrawer({ modelId, onClose }) {
             <AlertCircle size={20}/>
             <p className="text-sm">Nenhum job de treino encontrado para este modelo</p>
           </div>
+        ) : tab === 'live' ? (
+          <LiveLogPanel/>
         ) : tab === 'progress' ? (
           <div className="space-y-5">
             {/* Progress bar grande */}

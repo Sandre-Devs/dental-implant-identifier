@@ -43,6 +43,7 @@ app.use('/api/jobs',          require('./routes/jobs'));
 app.use('/api/annotations',   require('./routes/annotations'));
 app.use('/api/manufacturers', require('./routes/manufacturers'));
 app.use('/api/datasets',      require('./routes/datasets'));
+app.use('/api/models',        require('./routes/modelLogs'));  // SSE logs + rerun
 app.use('/api/models',        require('./routes/models'));
 
 app.get('/api/health', (req, res) => {
