@@ -28,5 +28,9 @@ module.exports = {
       out_file:   './logs/worker-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss'
     }
-  ]
+  ],
+
+  // SQLite Web — painel visual do banco (opcional)
+  // Ative com: bash scripts/setup-sqlite-web.sh
+  // Ou adicione manualmente ao array apps acima se quiser que o PM2 gerencie
 }
