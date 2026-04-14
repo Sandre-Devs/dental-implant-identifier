@@ -179,6 +179,39 @@ router.get('/jobs/list', requireAuth, (req, res) => {
 });
 
 
+
+// POST /api/models/upload — recebe modelo .pt treinado externamente (ex: Colab)
+router.post('/upload', requireAuth, requireRole('admin'), (req, res) => {
+  const { name, architecture, epochs, map50, map95, precision, recall, notes } = req.body;
+  if (!name) return res.status(400).json({ error: 'name obrigatório.' });
+
+  // O arquivo vem via multipart (mesmo middleware de imagens)
+  if (!req.file) return res.status(400).json({ error: 'Arquivo .pt não recebido.' });
+
+  const modelId  = uuidv4();
+  const version  = `v${new Date().toISOString().slice(0,10)}`;
+  const destDir  = require('path').resolve(__dirname, '../models');
+  const fs       = require('fs');
+  fs.mkdirSync(destDir, { recursive: true });
+
+  const dest = require('path').join(destDir, `${modelId}.pt`);
+  fs.renameSync(req.file.path, dest);
+
+  db.prepare(`
+    INSERT INTO ml_models
+      (id,name,version,architecture,status,epochs,map50,map95,precision,recall,model_path,notes,created_by)
+    VALUES (?,?,?,?,  'completed',  ?,    ?,    ?,    ?,        ?,      ?,         ?,    ?)
+  `).run(modelId, name, version, architecture || 'yolov8s',
+         epochs   ? +epochs   : null,
+         map50    ? +map50    : null,
+         map95    ? +map95    : null,
+         precision? +precision: null,
+         recall   ? +recall   : null,
+         dest, notes || 'Modelo treinado externamente (Colab)', req.user.id);
+
+  res.status(201).json({ model_id: modelId, model_path: dest, message: 'Modelo importado com sucesso.' });
+});
+
 // DELETE /api/models/:id — remove modelo e seu job (só failed/archived)
 router.delete('/:id', requireAuth, requireRole('admin'), (req, res) => {
   const model = db.prepare('SELECT * FROM ml_models WHERE id = ?').get(req.params.id);
