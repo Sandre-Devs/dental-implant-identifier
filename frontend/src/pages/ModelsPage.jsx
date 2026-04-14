@@ -352,16 +352,16 @@ function ReportDrawer({ modelId, onClose }) {
    PAGE PRINCIPAL
 ═══════════════════════════════════════════════════ */
 export default function ModelsPage() {
-  const [models,     setModels]     = useState([])
-  const [datasets,   setDatasets]   = useState([])
-  const [loading,    setLoading]    = useState(true)
+  const [models,      setModels]      = useState([])
+  const [datasets,    setDatasets]    = useState([])
+  const [loading,     setLoading]     = useState(true)
   const [modal,       setModal]       = useState(false)
   const [uploadModal, setUploadModal] = useState(false)
   const [saving,      setSaving]      = useState(false)
   const [uploading,   setUploading]   = useState(false)
   const [selectedId,  setSelectedId]  = useState(null)
   const [form, setForm] = useState({
-    name: '', dataset_id: '', architecture: 'yolov8m', epochs: 100, notes: ''
+    name: '', dataset_id: '', architecture: 'yolov8s', epochs: 50, notes: ''
   })
   const pollRef = useRef(null)
 
@@ -373,9 +373,7 @@ export default function ModelsPage() {
         api.get('/models'),
         api.get('/datasets')
       ])
-      const mList = mRes.data
-      // Para modelos em treino, busca progress
-      const enriched = await Promise.all(mList.map(async m => {
+      const enriched = await Promise.all(mRes.data.map(async m => {
         if (m.status === 'training') {
           try {
             const log = await api.get(`/models/${m.id}/logs`)
@@ -385,33 +383,30 @@ export default function ModelsPage() {
         return m
       }))
       setModels(enriched)
-      setDatasets(dRes.data.filter(ds => ds.status === 'ready'))
-    } finally {
-      setLoading(false)
-    }
+      setDatasets(dRes.data.filter(d => d.status === 'ready'))
+    } catch(e) {
+      console.error('Erro ao carregar modelos:', e)
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => {
     load()
-    // Polling contínuo enquanto há modelos em treino
-    pollRef.current = setInterval(() => {
-      setModels(prev => {
-        if (prev.some(m => m.status === 'training')) { load(true) }
-        return prev
-      })
-    }, POLL_MS)
+    pollRef.current = setInterval(() => load(true), 4000)
     return () => clearInterval(pollRef.current)
   }, [load])
 
+  /* Handlers */
   const handleTrain = async () => {
-    if (!form.name || !form.dataset_id) return toast.error('Nome e dataset obrigatórios.')
     setSaving(true)
     try {
       await api.post('/models/train', form)
       toast.success('Treino enfileirado!')
       setModal(false)
+      setForm({ name: '', dataset_id: '', architecture: 'yolov8s', epochs: 50, notes: '' })
       load()
-    } catch {} finally { setSaving(false) }
+    } catch(e) {
+      toast.error(e?.response?.data?.error || 'Erro ao iniciar treino.')
+    } finally { setSaving(false) }
   }
 
   const handleUploadModel = async (formData) => {
@@ -423,7 +418,7 @@ export default function ModelsPage() {
       toast.success('Modelo importado com sucesso!')
       setUploadModal(false)
       load()
-    } catch (e) {
+    } catch(e) {
       toast.error(e?.response?.data?.error || 'Erro ao importar modelo.')
     } finally { setUploading(false) }
   }
@@ -433,7 +428,9 @@ export default function ModelsPage() {
       await api.post(`/models/${id}/deploy`)
       toast.success('✅ Modelo em produção! A IA usará este modelo nas próximas detecções.')
       load()
-    } catch {}
+    } catch(e) {
+      toast.error(e?.response?.data?.error || 'Erro ao fazer deploy.')
+    }
   }
 
   const handleUndeploy = async id => {
@@ -441,7 +438,9 @@ export default function ModelsPage() {
       await api.patch(`/models/${id}`, { status: 'archived' })
       toast.success('Modelo arquivado.')
       load()
-    } catch {}
+    } catch(e) {
+      toast.error(e?.response?.data?.error || 'Erro ao arquivar.')
+    }
   }
 
   const handleDelete = async (id, name) => {
@@ -450,7 +449,7 @@ export default function ModelsPage() {
       await api.delete(`/models/${id}`)
       toast.success('Modelo removido.')
       load()
-    } catch (e) {
+    } catch(e) {
       toast.error(e?.response?.data?.error || 'Erro ao deletar modelo.')
     }
   }
@@ -458,16 +457,16 @@ export default function ModelsPage() {
   const handleRedeploy = async id => {
     try {
       await api.post(`/models/${id}/redeploy`)
-      toast.success('✅ Modelo redeployado! A IA voltará a usar este modelo.')
+      toast.success('✅ Modelo redeployado!')
       load()
-    } catch (e) {
+    } catch(e) {
       toast.error(e?.response?.data?.error || 'Erro ao redeploy.')
     }
   }
 
   const deployedModel  = models.find(m => m.status === 'deployed')
   const trainingModels = models.filter(m => m.status === 'training')
-  const otherModels    = models.filter(m => !['deployed','training'].includes(m.status))
+  const otherModels    = models.filter(m => ![ 'deployed', 'training' ].includes(m.status))
 
   return (
     <div className="space-y-5 max-w-4xl">
@@ -476,14 +475,23 @@ export default function ModelsPage() {
       <div className="page-header">
         <div>
           <h2 className="page-title">Modelos ML</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{models.length} modelos · {trainingModels.length > 0 && `${trainingModels.length} em treino`}</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {models.length} modelos{trainingModels.length > 0 && ` · ${trainingModels.length} em treino`}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <button className="btn-ghost text-xs" onClick={() => load()} title="Atualizar"><RefreshCw size={14}/></button>
-          <button className="btn-ghost text-xs border border-gray-700 px-3 py-1.5 flex items-center gap-1.5" onClick={() => setUploadModal(true)}>
+          <button className="btn-ghost text-xs" onClick={() => load()} title="Atualizar">
+            <RefreshCw size={14}/>
+          </button>
+          <button
+            className="btn-ghost text-xs border border-gray-700 px-3 py-1.5 flex items-center gap-1.5"
+            onClick={() => setUploadModal(true)}
+          >
             <FileUp size={14}/> Importar .pt
           </button>
-          <button className="btn-primary" onClick={() => setModal(true)}><Plus size={16}/> Novo Treino</button>
+          <button className="btn-primary" onClick={() => setModal(true)}>
+            <Plus size={16}/> Novo Treino
+          </button>
         </div>
       </div>
 
@@ -497,31 +505,38 @@ export default function ModelsPage() {
             <p className="text-sm font-semibold text-primary-300">
               {deployedModel.name} <span className="font-normal text-primary-400/70">está em produção</span>
             </p>
-            <p className="text-xs text-primary-400/60 mt-0.5">
-              {deployedModel.architecture} · {deployedModel.dataset_name}
-              {deployedModel.map50 && ` · mAP50: ${(deployedModel.map50*100).toFixed(1)}%`}
+            <p className="text-xs text-primary-400/60 truncate">
+              {deployedModel.architecture}
+              {deployedModel.map50 && ` · mAP50: ${(deployedModel.map50 * 100).toFixed(1)}%`}
+              {deployedModel.map95 && ` · mAP95: ${(deployedModel.map95 * 100).toFixed(1)}%`}
             </p>
           </div>
-          <Cpu size={16} className="text-primary-400/40 flex-shrink-0"/>
         </div>
       ) : (
-        <div className="flex items-center gap-3 p-3 bg-yellow-500/8 border border-yellow-500/20 rounded-xl">
-          <AlertCircle size={16} className="text-yellow-500/60 flex-shrink-0"/>
-          <p className="text-xs text-yellow-400/70">
-            Nenhum modelo em produção — faça o deploy de um modelo treinado para ativar a detecção automática
-          </p>
+        <div className="flex items-center gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-400 text-sm">
+          <AlertCircle size={15}/>
+          Nenhum modelo em produção — faça o deploy de um modelo treinado para ativar a detecção automática
         </div>
       )}
 
+      {/* Lista */}
       {loading ? (
         <div className="flex justify-center py-20"><Spinner size="lg"/></div>
       ) : models.length === 0 ? (
-        <Empty icon={BrainCircuit} title="Nenhum modelo" description="Crie um dataset pronto e inicie o treino."
-          action={<button className="btn-primary" onClick={() => setModal(true)}><Plus size={16}/> Iniciar Treino</button>}/>
+        <Empty
+          icon={BrainCircuit}
+          title="Nenhum modelo"
+          description="Crie um dataset pronto e inicie o treino."
+          action={
+            <button className="btn-primary" onClick={() => setModal(true)}>
+              <Plus size={16}/> Iniciar Treino
+            </button>
+          }
+        />
       ) : (
         <div className="space-y-3">
 
-          {/* Modelos em treino */}
+          {/* Em treino */}
           {trainingModels.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs text-gray-500 uppercase tracking-wide font-medium px-1 flex items-center gap-1.5">
@@ -538,36 +553,34 @@ export default function ModelsPage() {
                     onSelect={id => setSelectedId(prev => prev === id ? null : id)}
                     isSelected={selectedId === m.id}
                   />
-                  {selectedId === m.id && (
-                    <ReportDrawer modelId={m.id} onClose={() => setSelectedId(null)}/>
-                  )}
+                  {selectedId === m.id && <ReportDrawer modelId={m.id} onClose={() => setSelectedId(null)}/>}
                 </div>
               ))}
             </div>
           )}
 
-          {/* Modelo deployed */}
+          {/* Em produção */}
           {deployedModel && (
             <div className="space-y-2">
               <p className="text-xs text-gray-500 uppercase tracking-wide font-medium px-1 flex items-center gap-1.5">
                 <Zap size={11} className="text-primary-400"/> Em produção
               </p>
-              <ModelCard
-                model={deployedModel}
-                onDeploy={handleDeploy}
-                onUndeploy={handleUndeploy}
-                    onDelete={handleDelete}
-                    onRedeploy={handleRedeploy}
-                onSelect={id => setSelectedId(prev => prev === id ? null : id)}
-                isSelected={selectedId === deployedModel.id}
-              />
-              {selectedId === deployedModel.id && (
-                <ReportDrawer modelId={deployedModel.id} onClose={() => setSelectedId(null)}/>
-              )}
+              <div className="space-y-2">
+                <ModelCard
+                  model={deployedModel}
+                  onDeploy={handleDeploy}
+                  onUndeploy={handleUndeploy}
+                  onDelete={handleDelete}
+                  onRedeploy={handleRedeploy}
+                  onSelect={id => setSelectedId(prev => prev === id ? null : id)}
+                  isSelected={selectedId === deployedModel.id}
+                />
+                {selectedId === deployedModel.id && <ReportDrawer modelId={deployedModel.id} onClose={() => setSelectedId(null)}/>}
+              </div>
             </div>
           )}
 
-          {/* Outros modelos */}
+          {/* Histórico */}
           {otherModels.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs text-gray-500 uppercase tracking-wide font-medium px-1">Histórico</p>
@@ -582,9 +595,7 @@ export default function ModelsPage() {
                     onSelect={id => setSelectedId(prev => prev === id ? null : id)}
                     isSelected={selectedId === m.id}
                   />
-                  {selectedId === m.id && (
-                    <ReportDrawer modelId={m.id} onClose={() => setSelectedId(null)}/>
-                  )}
+                  {selectedId === m.id && <ReportDrawer modelId={m.id} onClose={() => setSelectedId(null)}/>}
                 </div>
               ))}
             </div>
@@ -592,67 +603,62 @@ export default function ModelsPage() {
         </div>
       )}
 
-      {/* Modal Novo Treino */}
-      <Modal open={modal} onClose={() => setModal(false)} title="Novo Treino">
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="label">Nome *</label>
-            <input className="input" value={form.name}
-              onChange={e => setForm({ ...form, name: e.target.value })}
-              placeholder="ex: DII-v1"/>
-          </div>
-          <div>
-            <label className="label">Dataset *</label>
-            <select className="input" value={form.dataset_id}
-              onChange={e => setForm({ ...form, dataset_id: e.target.value })}>
-              <option value="">Selecionar...</option>
-              {datasets.map(d => <option key={d.id} value={d.id}>{d.name} ({d.image_count} imgs)</option>)}
-            </select>
-            {datasets.length === 0 && (
-              <p className="text-xs text-yellow-500 mt-1">⚠ Nenhum dataset "ready". Monte um dataset primeiro.</p>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+      {/* Modal — Novo Treino */}
+      {modal && (
+        <Modal title="Iniciar Novo Treino" onClose={() => setModal(false)}>
+          <div className="space-y-4">
             <div>
-              <label className="label">Arquitetura</label>
-              <select className="input" value={form.architecture}
-                onChange={e => setForm({ ...form, architecture: e.target.value })}>
-                {['yolov8n','yolov8s','yolov8m','yolov8l','yolov8x'].map(a =>
-                  <option key={a} value={a}>{a}</option>
-                )}
+              <label className="block text-xs text-gray-400 mb-1">Nome do modelo *</label>
+              <input className="input w-full" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} placeholder="ex: DII-v2"/>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Dataset *</label>
+              <select className="input w-full" value={form.dataset_id} onChange={e => setForm(f => ({...f, dataset_id: e.target.value}))}>
+                <option value="">Selecione um dataset...</option>
+                {datasets.map(d => <option key={d.id} value={d.id}>{d.name} ({d.image_count} imagens)</option>)}
               </select>
+              {datasets.length === 0 && <p className="text-xs text-yellow-400 mt-1">Nenhum dataset pronto. Crie e exporte um dataset primeiro.</p>}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Arquitetura</label>
+                <select className="input w-full" value={form.architecture} onChange={e => setForm(f => ({...f, architecture: e.target.value}))}>
+                  <option value="yolov8n">yolov8n — Rápido</option>
+                  <option value="yolov8s">yolov8s — Recomendado</option>
+                  <option value="yolov8m">yolov8m — Preciso</option>
+                  <option value="yolov8l">yolov8l — Pesado</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Épocas</label>
+                <input className="input w-full" type="number" min="1" max="300" value={form.epochs} onChange={e => setForm(f => ({...f, epochs: +e.target.value}))}/>
+              </div>
             </div>
             <div>
-              <label className="label">Épocas</label>
-              <input className="input" type="number" min="1" max="300"
-                value={form.epochs} onChange={e => setForm({ ...form, epochs: +e.target.value })}/>
+              <label className="block text-xs text-gray-400 mb-1">Notas (opcional)</label>
+              <input className="input w-full" value={form.notes} onChange={e => setForm(f => ({...f, notes: e.target.value}))} placeholder="Descrição do treino"/>
+            </div>
+            <div className="bg-gray-800/50 rounded-lg p-3 text-xs text-gray-500 space-y-1">
+              <p className="text-gray-400 font-medium flex items-center gap-1"><Cpu size={11}/> Dica de performance</p>
+              <p>1. Use o Google Colab (GPU gratuita) para treinos rápidos</p>
+              <p>2. No Colab, use o notebook em <span className="font-mono">scripts/DII_Train_GPU.ipynb</span></p>
+              <p>3. Após concluído, clique em "Importar .pt" para fazer upload</p>
+            </div>
+            <div className="flex justify-end gap-3 pt-1">
+              <button className="btn-secondary" onClick={() => setModal(false)}>Cancelar</button>
+              <button
+                className="btn-primary"
+                disabled={saving || !form.dataset_id || !form.name}
+                onClick={handleTrain}
+              >
+                {saving ? <Loader2 size={14} className="animate-spin"/> : <><BrainCircuit size={14}/> Iniciar</>}
+              </button>
             </div>
           </div>
-          <div>
-            <label className="label">Notas</label>
-            <textarea className="input resize-none h-16" value={form.notes}
-              onChange={e => setForm({ ...form, notes: e.target.value })}/>
-          </div>
-          <div className="p-3 bg-gray-800/50 rounded-lg text-xs text-gray-400 space-y-1">
-            <p className="font-medium text-gray-300">ℹ Como funciona</p>
-            <p>1. O job entra na fila e o serviço ML inicia o treino</p>
-            <p>2. Acompanhe o progresso em tempo real clicando em "Report"</p>
-            <p>3. Após concluído, clique em "Deploy" para ativar em produção</p>
-          </div>
-          <div className="flex justify-end gap-3 pt-1">
-            <button className="btn-secondary" onClick={() => setModal(false)}>Cancelar</button>
-            <button className="btn-primary" disabled={saving || !form.dataset_id || !form.name} onClick={handleTrain}>
-              {saving
-                ? <Loader2 size={14} className="animate-spin"/>
-                : <><BrainCircuit size={14}/> Iniciar</>
-              }
-            </button>
-          </div>
-        </div>
-      </Modal>
-    </div>
+        </Modal>
+      )}
 
-      {/* Modal — Importar modelo .pt */}
+      {/* Modal — Importar .pt */}
       {uploadModal && (
         <Modal title="Importar Modelo Treinado" onClose={() => setUploadModal(false)}>
           <UploadModelForm
@@ -662,11 +668,11 @@ export default function ModelsPage() {
           />
         </Modal>
       )}
+
+    </div>
   )
 }
-  
 
-    {/* ── Modal de importação de modelo .pt ─────────────────────── */}
 function UploadModelForm({ onSubmit, loading, onCancel }) {
   const [file,   setFile]   = useState(null)
   const [name,   setName]   = useState('')
