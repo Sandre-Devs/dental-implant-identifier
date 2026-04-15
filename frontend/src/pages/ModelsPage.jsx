@@ -234,7 +234,7 @@ function LiveLogPanel() {
   }, [logs, autoScroll])
 
   const clearLogs = async () => {
-    await fetch('/api/models/logs', { method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('dii_token') || ''}` } })
+    await api.delete('/models/logs')
     setLogs([])
   }
 

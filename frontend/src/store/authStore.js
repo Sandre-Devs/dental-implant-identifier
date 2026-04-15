@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import api from '../services/api'
+import api, { initTokenRefresh } from '../services/api'
 
 export const useAuthStore = create((set) => ({
   token: localStorage.getItem('dii_token') || null,
@@ -11,6 +11,7 @@ export const useAuthStore = create((set) => ({
     localStorage.setItem('dii_user', JSON.stringify(data.user))
     localStorage.setItem('dii_refresh', data.refresh_token)
     set({ token: data.token, user: data.user })
+    initTokenRefresh()   // agenda proactive refresh a partir do novo token
     return data.user
   },
 

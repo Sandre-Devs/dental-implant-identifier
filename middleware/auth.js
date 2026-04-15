@@ -47,8 +47,8 @@ function requireRole(...roles) {
  * Gera access token (1h) + refresh token (7d)
  */
 function generateTokens(userId) {
-  const access = jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: '1h' });
-  const refresh = jwt.sign({ sub: userId, type: 'refresh' }, JWT_SECRET, { expiresIn: '7d' });
+  const access = jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: '8h' });
+  const refresh = jwt.sign({ sub: userId, type: 'refresh' }, JWT_SECRET, { expiresIn: '30d' });
   return { access, refresh };
 }
 
