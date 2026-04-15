@@ -12,7 +12,7 @@ export default function DatasetsPage() {
   const [loading, setLoading]   = useState(true)
   const [modal, setModal]       = useState(false)
   const [saving, setSaving]     = useState(false)
-  const [form, setForm] = useState({ name:'', description:'', export_format:'yolo', split_train:0.7, split_val:0.2 })
+  const [form, setForm] = useState({ name:'', description:'', export_format:'yolo', export_mode:'manufacturer', split_train:0.7, split_val:0.2 })
 
   const load = useCallback(() => {
     setLoading(true)
@@ -56,6 +56,14 @@ export default function DatasetsPage() {
                     <h3 className="font-semibold text-gray-100">{d.name}</h3>
                     <Badge value={d.status}/>
                     <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">{d.export_format.toUpperCase()}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                      d.export_mode==='connection_type' ? 'bg-blue-500/15 text-blue-300' :
+                      d.export_mode==='combined'        ? 'bg-purple-500/15 text-purple-300' :
+                                                          'bg-primary-500/15 text-primary-300'
+                    }`}>
+                      {d.export_mode==='connection_type' ? 'Conexão (CM/HI/HE)' :
+                       d.export_mode==='combined'        ? 'Combinado' : 'Fabricante'}
+                    </span>
                   </div>
                   {d.description && <p className="text-sm text-gray-400 mb-2">{d.description}</p>}
                   <div className="flex gap-5 text-xs text-gray-500">
@@ -78,6 +86,34 @@ export default function DatasetsPage() {
         <div className="p-5 space-y-4">
           <div><label className="label">Nome *</label><input className="input" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="ex: Dataset v1"/></div>
           <div><label className="label">Descrição</label><textarea className="input resize-none h-20" value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></div>
+          {/* Modo de exportação */}
+          <div>
+            <label className="label">Modo de Exportação <span className="text-gray-500 font-normal">(define o que o modelo aprenderá)</span></label>
+            <div className="grid grid-cols-1 gap-2 mt-1">
+              {[
+                { value:'manufacturer',    label:'🏭 Por Fabricante',   desc:'Neodent, Conexão, FGM...' },
+                { value:'connection_type', label:'🔩 Por Tipo de Conexão', desc:'CM (Cone Morse) · HI (Hex Interno) · HE (Hex Externo)' },
+                { value:'combined',        label:'🔬 Combinado',         desc:'Neodent_CM, Conexão_HE... (requer mais dados)' },
+              ].map(opt => (
+                <label key={opt.value}
+                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                    form.export_mode===opt.value
+                      ? 'border-primary-500 bg-primary-500/10'
+                      : 'border-gray-700 hover:border-gray-600'
+                  }`}>
+                  <input type="radio" name="export_mode" value={opt.value}
+                    checked={form.export_mode===opt.value}
+                    onChange={e=>setForm({...form,export_mode:e.target.value})}
+                    className="mt-0.5 accent-primary-500"/>
+                  <div>
+                    <p className="text-sm font-medium text-gray-200">{opt.label}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Formato</label>

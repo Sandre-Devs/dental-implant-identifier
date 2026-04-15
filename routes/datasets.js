@@ -51,24 +51,25 @@ router.get('/:id/images', requireAuth, (req, res) => {
 router.post('/', requireAuth, requireRole('admin','reviewer'),
   body('name').notEmpty().trim(),
   body('export_format').isIn(['yolo','coco','pascal_voc']).optional(),
+  body('export_mode').isIn(['manufacturer','connection_type','combined']).optional(),
   body('split_train').isFloat({ min: 0.1, max: 0.9 }).optional(),
   body('split_val').isFloat({ min: 0.05, max: 0.5 }).optional(),
   (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { name, description, export_format = 'yolo',
+    const { name, description, export_format = 'yolo', export_mode = 'manufacturer',
             split_train = 0.7, split_val = 0.2 } = req.body;
     const split_test = +(1 - split_train - split_val).toFixed(2);
     if (split_test < 0) return res.status(400).json({ error: 'Splits somam mais que 1.0.' });
 
     const id = uuidv4();
     db.prepare(`
-      INSERT INTO datasets (id,name,description,export_format,split_train,split_val,split_test,created_by)
-      VALUES (?,?,?,?,?,?,?,?)
-    `).run(id, name, description, export_format, split_train, split_val, split_test, req.user.id);
+      INSERT INTO datasets (id,name,description,export_format,export_mode,split_train,split_val,split_test,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?)
+    `).run(id, name, description, export_format, export_mode, split_train, split_val, split_test, req.user.id);
 
-    res.status(201).json({ id, name, export_format, split_train, split_val, split_test });
+    res.status(201).json({ id, name, export_format, export_mode, split_train, split_val, split_test });
   }
 );
 

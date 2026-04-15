@@ -72,31 +72,55 @@ router.post('/train', requireAuth, requireRole('admin'),
 
 // POST /api/models/upload — importa modelo .pt externo (Colab, etc.)
 router.post('/upload', requireAuth, requireRole('admin'), modelUpload.single('model'), (req, res) => {
-  const { name, architecture, epochs, map50, map95, precision, recall, notes } = req.body;
-  if (!name) return res.status(400).json({ error: 'name obrigatório.' });
+  const { name, architecture, epochs, map50, map95, precision, recall,
+          task = 'manufacturer', dataset_id, class_names, notes } = req.body;
+  if (!name)     return res.status(400).json({ error: 'name obrigatório.' });
   if (!req.file) return res.status(400).json({ error: 'Arquivo .pt não recebido.' });
 
   const modelId = req.file.filename.replace('.pt', '');
   const version = `v${new Date().toISOString().slice(0, 10)}`;
   const dest    = req.file.path;
 
+  // Salva classes.json ao lado do modelo para o inferenceService usar
+  if (class_names) {
+    try {
+      const classArr = JSON.parse(class_names);
+      const cjPath   = dest.replace('.pt', '_classes.json');
+      require('fs').writeFileSync(cjPath, JSON.stringify({
+        export_mode: task,
+        classes: classArr,
+        map: Object.fromEntries(classArr.map((n, i) => [n, i]))
+      }, null, 2));
+      // Associa o export_path ao dataset se fornecido
+      if (dataset_id) {
+        const ds = db.prepare('SELECT export_path FROM datasets WHERE id=?').get(dataset_id);
+        if (ds?.export_path) {
+          const djPath = require('path').join(ds.export_path, 'classes.json');
+          require('fs').writeFileSync(djPath, require('fs').readFileSync(cjPath));
+        }
+      }
+    } catch(e) { console.warn('[upload] classes.json:', e.message); }
+  }
+
   db.prepare(`
     INSERT INTO ml_models
-      (id, name, version, architecture, status, epochs, map50, map95, precision, recall, model_path, notes, created_by)
-    VALUES (?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, version, architecture, task, dataset_id, status,
+       epochs, map50, map95, precision, recall, model_path, notes, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     modelId, name, version, architecture || 'yolov8s',
+    task, dataset_id || null,
     epochs    ? +epochs    : null,
     map50     ? +map50     : null,
     map95     ? +map95     : null,
     precision ? +precision : null,
     recall    ? +recall    : null,
     dest,
-    notes || 'Modelo treinado externamente (Colab)',
+    notes || `Modelo treinado externamente — task: ${task}`,
     req.user.id
   );
 
-  res.status(201).json({ model_id: modelId, model_path: dest, message: 'Modelo importado com sucesso.' });
+  res.status(201).json({ id: modelId, model_path: dest, message: 'Modelo importado com sucesso.' });
 });
 
 // GET /api/models/jobs/list

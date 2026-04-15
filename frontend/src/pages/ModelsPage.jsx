@@ -125,6 +125,15 @@ function ModelCard({ model, onDeploy, onUndeploy, onDelete, onRedeploy, onSelect
               <h3 className="font-semibold text-gray-100 text-sm">{model.name}</h3>
               <Badge value={model.status}/>
               <span className="text-xs text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded font-mono">{model.architecture}</span>
+              {model.task && (
+                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                  model.task==='connection_type' ? 'bg-blue-500/15 text-blue-300' :
+                  model.task==='combined'        ? 'bg-purple-500/15 text-purple-300' :
+                                                   'bg-primary-500/15 text-primary-300'
+                }`}>
+                  {model.task==='connection_type'?'🔩 Conexão':model.task==='combined'?'🔬 Combinado':'🏭 Fabricante'}
+                </span>
+              )}
             </div>
             <p className="text-xs text-gray-500 mb-3">
               {model.dataset_name && <span>Dataset: <span className="text-gray-400">{model.dataset_name}</span> · </span>}
@@ -590,9 +599,11 @@ export default function ModelsPage() {
     }
   }
 
-  const deployedModel  = models.find(m => m.status === 'deployed')
+  const deployedModels = models.filter(m => m.status === 'deployed')
+  const deployedModel  = deployedModels.find(m => (m.task||'manufacturer')==='manufacturer') || deployedModels[0]
+  const deployedConn   = deployedModels.find(m => m.task==='connection_type') || null
   const trainingModels = models.filter(m => m.status === 'training')
-  const otherModels    = models.filter(m => ![ 'deployed', 'training' ].includes(m.status))
+  const otherModels    = models.filter(m => !['deployed','training'].includes(m.status))
 
   return (
     <div className="space-y-5 max-w-4xl">
@@ -621,22 +632,39 @@ export default function ModelsPage() {
         </div>
       </div>
 
-      {/* Banner — modelo em produção */}
-      {deployedModel ? (
-        <div className="flex items-center gap-3 p-3 bg-primary-500/10 border border-primary-500/30 rounded-xl">
-          <div className="w-8 h-8 rounded-lg bg-primary-500/20 flex items-center justify-center flex-shrink-0">
-            <Zap size={16} className="text-primary-400"/>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-primary-300">
-              {deployedModel.name} <span className="font-normal text-primary-400/70">está em produção</span>
-            </p>
-            <p className="text-xs text-primary-400/60 truncate">
-              {deployedModel.architecture}
-              {deployedModel.map50 && ` · mAP50: ${(deployedModel.map50 * 100).toFixed(1)}%`}
-              {deployedModel.map95 && ` · mAP95: ${(deployedModel.map95 * 100).toFixed(1)}%`}
-            </p>
-          </div>
+      {/* Banner — modelos em produção */}
+      {deployedModels.length > 0 ? (
+        <div className="space-y-2">
+          {[deployedModel, deployedConn].filter(Boolean).map(m => (
+            <div key={m.id} className="flex items-center gap-3 p-3 bg-primary-500/10 border border-primary-500/30 rounded-xl">
+              <div className="w-8 h-8 rounded-lg bg-primary-500/20 flex items-center justify-center flex-shrink-0 text-base">
+                {m.task==='connection_type' ? '🔩' : m.task==='combined' ? '🔬' : '🏭'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-primary-300">
+                  {m.name} <span className="font-normal text-primary-400/70">em produção</span>
+                </p>
+                <p className="text-xs text-primary-400/60 truncate">
+                  {m.architecture}
+                  {m.map50 && ` · mAP50: ${(m.map50*100).toFixed(1)}%`}
+                  {m.map95 && ` · mAP95: ${(m.map95*100).toFixed(1)}%`}
+                  {' · '}{m.task==='connection_type'?'Conexão (CM/HI/HE)':m.task==='combined'?'Combinado':'Fabricante'}
+                </p>
+              </div>
+            </div>
+          ))}
+          {!deployedConn && (
+            <div className="flex items-center gap-2 p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400 text-xs">
+              <AlertCircle size={13}/>
+              Treine um modelo de <strong className="ml-1">Tipo de Conexão</strong> para identificar CM · HI · HE automaticamente
+            </div>
+          )}
+          {!deployedModel && (
+            <div className="flex items-center gap-2 p-2.5 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-400 text-xs">
+              <AlertCircle size={13}/>
+              Treine um modelo de <strong className="ml-1">Fabricante</strong> para identificar marcas automaticamente
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex items-center gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-400 text-sm">
@@ -801,6 +829,7 @@ function UploadModelForm({ onSubmit, loading, onCancel }) {
   const [arch,   setArch]   = useState('yolov8s')
   const [epochs, setEpochs] = useState('')
   const [map50,  setMap50]  = useState('')
+  const [uploadTask, setUploadTask] = useState('manufacturer')
   const [notes,  setNotes]  = useState('Importado do Google Colab')
   const [drag,   setDrag]   = useState(false)
   const inputRef = useRef(null)
@@ -825,6 +854,7 @@ function UploadModelForm({ onSubmit, loading, onCancel }) {
     fd.append('model', file)
     fd.append('name', name.trim())
     fd.append('architecture', arch)
+    fd.append('task', uploadTask)
     if (epochs) fd.append('epochs', epochs)
     if (map50)  fd.append('map50', parseFloat(map50) / 100)
     if (notes)  fd.append('notes', notes)
@@ -876,6 +906,30 @@ function UploadModelForm({ onSubmit, loading, onCancel }) {
               <option key={a} value={a}>{a}</option>
             ))}
           </select>
+        </div>
+        <div className="col-span-2">
+          <label className="block text-xs text-gray-400 mb-1">Tarefa do modelo</label>
+          <div className="flex gap-2">
+            {[
+              { value:'manufacturer',    label:'🏭 Fabricante',  desc:'Neodent, Conexão...' },
+              { value:'connection_type', label:'🔩 Conexão',     desc:'CM · HI · HE' },
+              { value:'combined',        label:'🔬 Combinado',   desc:'Neodent_CM...' },
+            ].map(opt => (
+              <label key={opt.value}
+                className={`flex-1 flex flex-col items-center gap-0.5 p-2 rounded-lg border cursor-pointer text-center transition-all ${
+                  uploadTask===opt.value
+                    ? 'border-primary-500 bg-primary-500/10'
+                    : 'border-gray-700 hover:border-gray-600'
+                }`}>
+                <input type="radio" name="uploadTask" value={opt.value}
+                  checked={uploadTask===opt.value}
+                  onChange={e=>setUploadTask(e.target.value)}
+                  className="sr-only"/>
+                <span className="text-sm font-medium text-gray-200">{opt.label}</span>
+                <span className="text-xs text-gray-500">{opt.desc}</span>
+              </label>
+            ))}
+          </div>
         </div>
         <div>
           <label className="block text-xs text-gray-400 mb-1">Épocas treinadas</label>

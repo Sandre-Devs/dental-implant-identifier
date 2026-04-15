@@ -88,29 +88,50 @@ async function exportDataset(job) {
     fs.mkdirSync(path.join(outDir, 'labels', split), { recursive: true })
   }
 
-  // Busca itens com fabricante para gerar classes multi-label
+  // Mapeamento de connection_type para label curta
+  const CONN_LABELS = { cone_morse:'CM', hex_interno:'HI', hex_externo:'HE', trilobe:'TR' }
+
+  // Busca itens com fabricante e tipo de conexão
   const items = db.prepare(`
     SELECT di.split, di.image_id, di.annotation_id,
            i.filename, i.width, i.height,
            a.bbox_x, a.bbox_y, a.bbox_w, a.bbox_h,
-           COALESCE(m.name, 'implant') as class_name
+           COALESCE(m.name, 'implant')              as manufacturer_name,
+           COALESCE(s.connection_type, 'unknown')   as connection_type
     FROM dataset_images di
-    JOIN images i           ON i.id = di.image_id
-    JOIN annotations a      ON a.id = di.annotation_id
-    LEFT JOIN manufacturers m ON m.id = a.manufacturer_id
+    JOIN images i              ON i.id = di.image_id
+    JOIN annotations a         ON a.id = di.annotation_id
+    LEFT JOIN manufacturers m  ON m.id = a.manufacturer_id
+    LEFT JOIN implant_systems s ON s.id = a.system_id
     WHERE di.dataset_id = ?
   `).all(dataset_id)
 
+  // Determina o label de cada item conforme o export_mode do dataset
+  const exportMode = dataset.export_mode || 'manufacturer'  // manufacturer | connection_type | combined
+  const getLabel = item => {
+    if (exportMode === 'connection_type') {
+      return CONN_LABELS[item.connection_type] || item.connection_type
+    }
+    if (exportMode === 'combined') {
+      const conn = CONN_LABELS[item.connection_type] || item.connection_type
+      return `${item.manufacturer_name}_${conn}`
+    }
+    return item.manufacturer_name  // default: manufacturer
+  }
+
+  // Adiciona class_name calculado a cada item
+  const itemsWithClass = items.map(i => ({ ...i, class_name: getLabel(i) }))
+
   // Monta mapeamento de classes (ordem alfabética → reproduzível)
-  const classSet = [...new Set(items.map(i => i.class_name))].sort()
+  const classSet = [...new Set(itemsWithClass.map(i => i.class_name))].sort()
   const classMap = Object.fromEntries(classSet.map((n, i) => [n, i]))
-  setProgress(job.id, 12, `Classes detectadas: ${classSet.join(', ')}`)
+  setProgress(job.id, 12, `[${exportMode}] Classes: ${classSet.join(', ')}`)
 
   setProgress(job.id, 15, `${items.length} itens para exportar`)
 
   // Agrupa por imagem para juntar múltiplas annotations numa label
   const byImage = {}
-  for (const item of items) {
+  for (const item of itemsWithClass) {
     const key = `${item.split}|${item.image_id}`
     if (!byImage[key]) byImage[key] = { ...item, boxes: [] }
     byImage[key].boxes.push({
@@ -161,11 +182,15 @@ async function exportDataset(job) {
   const yamlPath = path.join(outDir, 'data.yaml')
   fs.writeFileSync(yamlPath, yaml)
 
-  // classes.json — usado pelo inferenceService para mapear class_name → manufacturer_id
+  // classes.json — usado pelo inferenceService para mapear class_name → fabricante/conexão
   const classesJson = path.join(outDir, 'classes.json')
-  fs.writeFileSync(classesJson, JSON.stringify({ classes: classSet, map: classMap }, null, 2))
+  fs.writeFileSync(classesJson, JSON.stringify({
+    export_mode: exportMode,
+    classes:     classSet,
+    map:         classMap
+  }, null, 2))
 
-  // Atualiza dataset com lista de classes no banco
+  // Atualiza dataset com lista de classes e modo no banco
   db.prepare('UPDATE datasets SET class_names=?, updated_at=datetime(\'now\') WHERE id=?')
     .run(JSON.stringify(classSet), dataset_id)
 
@@ -328,8 +353,10 @@ print("DONE")
         if (line.startsWith('BEST_MODEL:')) {
           const bestPt = line.replace('BEST_MODEL:', '').trim()
           if (fs.existsSync(bestPt)) {
-            db.prepare(`UPDATE ml_models SET model_path=?, updated_at=datetime('now') WHERE id=?`)
-              .run(bestPt, model_id)
+            // Salva task do dataset no modelo
+            const dsTask = db.prepare('SELECT export_mode FROM datasets WHERE id=?').get(dataset_id)
+            db.prepare(`UPDATE ml_models SET model_path=?, task=?, updated_at=datetime('now') WHERE id=?`)
+              .run(bestPt, dsTask?.export_mode || 'manufacturer', model_id)
             appendLog(job.id, `Modelo salvo em: ${bestPt}`)
           }
         }
