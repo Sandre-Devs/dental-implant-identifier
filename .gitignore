@@ -11,15 +11,18 @@ data/
 *.db-wal
 
 # Uploads (arquivos de usuário)
-uploads/*
+uploads/
 !uploads/.gitkeep
+venv-ml/
+.venv/
+.next/
 
 # Logs
 logs/
 *.log
 
 # Build do frontend (será gerado no CI/CD)
-public/*
+public/
 !public/.gitkeep
 
 # Sistema operacional
