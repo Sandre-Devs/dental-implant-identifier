@@ -31,5 +31,8 @@ Thumbs.db
 # Arquivos grandes — modelos treinados e exports
 exports/
 models/
+runs/
+run_*/
+*.last
 *.pt
 *.weights
